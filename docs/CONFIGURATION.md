@@ -40,9 +40,9 @@ believing a gate is disabled when it is not.
 
 State is host-independent. The root is resolved in this order:
 
-1. `$LLM_GROUNDED_HOME` — explicit override
-2. `$XDG_STATE_HOME/llm-grounded` — when `XDG_STATE_HOME` is set
-3. `$HOME/.local/state/llm-grounded` — the ordinary default
+1. `$LLM_GROUNDED_HOME`, an explicit override
+2. `$XDG_STATE_HOME/llm-grounded`, when `XDG_STATE_HOME` is set
+3. `$HOME/.local/state/llm-grounded`, the ordinary default
 
 Every directory is also overridable through config (`evidenceDir`,
 `telemetryDir`), so a fresh install needs no environment variables at all.
@@ -67,7 +67,7 @@ constant rather than an error.
 ```
 
 Entries must be plain words of at least two characters. Regex metacharacters
-are **rejected at config load** rather than escaped silently — a term that
+are **rejected at config load** rather than escaped silently. A term that
 needs escaping is a mistake in configuration, and accepting it would let a
 stray `(` change what the classifier matches.
 
@@ -92,7 +92,7 @@ be exactly the wrong failure mode.
 `factsCliPath` must point at an executable that accepts a JSON transaction on
 stdin and returns a JSON result on stdout. It runs under `pythonPath` with an
 explicit timeout, receives the store root from **configuration and never from
-the model**, and its output is parsed defensively — a malformed result is
+the model**, and its output is parsed defensively. A malformed result is
 treated as a failed write, not a successful one.
 
 ## Turning things off
@@ -109,6 +109,6 @@ There is deliberately no key for the fail-closed sentence. See
 
 Restart the OpenClaw gateway. Plugin code and configuration are read at load;
 neither is re-read from disk on its own. When checking whether the restart took
-effect, identify the gateway by the process actually bound to its port — a
+effect, identify the gateway by the process actually bound to its port. A
 `pgrep` pattern loose enough to match a neighbouring process will tell you the
 gateway is running when it is not.

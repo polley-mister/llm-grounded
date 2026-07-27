@@ -12,7 +12,7 @@ anything derived from a corpus, publish rates rather than records.
 
 Without per-turn records there is no false-positive rate, only opinions about
 one. The corpus is also what Phase 4's claim extractor gets calibrated
-against — which requires the *pre-revision* draft, not just what shipped.
+against, which requires the *pre-revision* draft, not just what shipped.
 
 ## Record shape
 
@@ -24,7 +24,7 @@ against — which requires the *pre-revision* draft, not just what shipped.
 | `pluginVersion` | plugin version that produced the record |
 | `behaviorEpoch` | label for the behaviour regime; bump on every deliberate change |
 | `promptHash` | hash of the prompt surfaces (content is **never** copied in) |
-| `rulesetHash` | hash of the rule files — an edit here changes decisions without touching the prompt |
+| `rulesetHash` | hash of the rule files; an edit here changes decisions without touching the prompt |
 | `configHash` | hash of resolved config |
 
 The three hashes are separate on purpose. A single combined fingerprint cannot
@@ -33,7 +33,7 @@ tell you whether a behaviour change came from a prompt edit or a code edit.
 ### Identity
 
 `sessionId`, `agentId`, `runId`, `turnId`, plus `synthetic` and
-`syntheticReason` — turns produced by testing rather than use. Synthetic turns
+`syntheticReason` marks turns produced by testing rather than use. Synthetic turns
 are excluded from rates and kept so destructive paths stay verifiable without
 polluting the corpus.
 
@@ -83,8 +83,8 @@ available.
 
 Both pools are small enough to review weekly.
 
-Weight by asymmetric cost when you summarise. A false `web` — an unnecessary
-search on a conversational turn — is roughly ten times worse than a false
+Weight by asymmetric cost when you summarise. A false `web`, an unnecessary
+search on a conversational turn, is roughly ten times worse than a false
 `null`, because one wastes a call and breaks the conversation while the other
 merely leaves a suggestion unmade.
 
@@ -104,7 +104,7 @@ Over 28 ordinary turns under enforced routing, at a single epoch:
 The same corpus, split by model within one epoch: median reply 49 vs 45 words,
 voice gate 32% vs 33%, fail-closed 32% vs 22%, latency 8.1s vs 15.3s. An
 earlier claim that the slower model was "dramatically better" did not survive
-being measured — the reliable difference was latency.
+being measured. The reliable difference was latency.
 
 ## Analysis notes
 

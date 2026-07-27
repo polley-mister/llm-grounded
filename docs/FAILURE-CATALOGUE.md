@@ -25,9 +25,9 @@ web *by it alone*. Two more visible failures shared the cause: `Good one`
 capitalised contraction opening a hypothetical produced an encyclopedia entry
 about a trolley problem.
 
-**Fix.** Normalise contractions before lookup, skip short all-caps tokens as
-acronyms, and — the actual fix — stop letting the heuristic *promote* a turn to
-a grounded tier at all.
+**Fix.** Normalise contractions before lookup and skip short all-caps tokens
+as acronyms. The actual fix, though, was to stop letting the heuristic
+*promote* a turn to a grounded tier at all.
 
 **The generalisable part.** A single feature that can unilaterally promote to
 enforcement will eventually promote something absurd. Features should vote;
@@ -67,7 +67,7 @@ distinguished "locate a private individual" from any other search.
 **Fix.** Assertion-mode filtering excludes questions, hypotheticals, and
 quotations from fact detection. Separately, `src/sensitive.js` blocks searches
 whose purpose is to locate a private residence, personal contact details, or
-identity via residential information — with IP and MAC addresses explicitly
+identity via residential information, with IP and MAC addresses explicitly
 exempt, since those are ordinary infrastructure questions.
 
 **The generalisable part.** "Could this tool call harm a third party who is not
@@ -87,7 +87,7 @@ the user's turn. Classifying it derived the obligation from the wrong string.
 **Fix.** A per-turn nonce. The verdict and hard-trigger decision are computed
 once, when the nonce is new, and reused on rebuilds.
 
-**Fallen into twice** — the second time while adding a new hard trigger,
+**Fallen into twice**, the second time while adding a new hard trigger,
 immediately below a comment describing the trap.
 
 ---
@@ -132,7 +132,7 @@ been reworded; the plugin still compared against the old wording.
 **Cause.** Two sources of truth for one string.
 
 **Fix.** A test hashes both and asserts equality. Note that the *first* version
-of that check was blind to its own outcome — it compared, but nothing consumed
+of that check was blind to its own outcome. It compared, but nothing consumed
 the comparison.
 
 **The generalisable part.** A consistency check that cannot fail is worse than
@@ -147,7 +147,7 @@ is not; it is the enforcement rate, and it says nothing about correctness.
 
 **Fix.** False positives live in the **disagreement set**: turns where the
 chain would have compelled a tool and a free model reached for nothing. The
-converse set — the model searched where the chain saw nothing — is the
+converse set, where the model searched and the chain saw nothing, is the
 false-negative pool. Both are small enough to hand-label weekly.
 
 ---
@@ -162,7 +162,7 @@ confounded and the conclusion was withdrawn.
 **Fix.** Behaviour epochs plus separate prompt, ruleset, and config hashes on
 every record. When the measured comparison was finally run within one epoch,
 the two models differed by 4 words of median length and 1 percentage point of
-voice-gate firing — the visible difference was latency, not quality.
+voice-gate firing. The visible difference was latency, not quality.
 
 **The generalisable part.** Any corpus that cannot tell you which code produced
 each record will eventually be used to justify a wrong conclusion.

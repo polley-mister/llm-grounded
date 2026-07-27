@@ -2,8 +2,8 @@
 
 A deterministic grounding and voice contract for LLM agents.
 
-llm-grounded sits between a model and its user. It decides — in ordinary code,
-not in a prompt — when an answer needs evidence, whether the evidence actually
+llm-grounded sits between a model and its user. It decides, in ordinary code rather than
+in a prompt, when an answer needs evidence, whether the evidence actually
 arrived, and whether the reply that came back is the shape the operator asked
 for. When something is missing it asks for one bounded revision, and when that
 fails it says so rather than shipping a confident guess.
@@ -11,8 +11,8 @@ fails it says so rather than shipping a confident guess.
 **The core is framework-independent.** It is plain synchronous functions over
 strings and plain objects: it opens no sockets, calls no model, and holds no
 framework types. An [OpenClaw](https://openclaw.ai) plugin adapter ships in the
-box; for anything else — LangGraph, the Vercel AI SDK, the OpenAI Agents SDK, a
-hand-rolled loop — import the core and write the adapter, which is a handful of
+box. For anything else (LangGraph, the Vercel AI SDK, the OpenAI Agents SDK, a
+hand-rolled loop) import the core and write the adapter, which is a handful of
 call sites. See **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
 
 ```js
@@ -35,7 +35,7 @@ An agent that can search will search when it shouldn't, and will answer from
 nothing when it should have looked. Prompt instructions ("only search when
 necessary") are advisory to a model in a way that code is not.
 
-The obvious fix — classify the user's turn, then compel the matching tool — is
+The obvious fix, classify the user's turn and then compel the matching tool, is
 the one this project started with, and it is worth being explicit about how
 badly it went. Across 28 ordinary conversational turns:
 
@@ -47,13 +47,13 @@ badly it went. Across 28 ordinary conversational turns:
 
 Some concrete failures from that period:
 
-- `Are you able to change your Humor setting to 100?` — "Humor" is capitalised,
-  so it read as a proper noun, so the turn was routed to the web, so the agent
-  searched the internet for information about its own configuration.
-- `Good one` — capitalised common word, same path, and the two-word reaction to
-  a joke ended in *"I could not verify that, so I will not answer."*
-- `What if I told you that I am <name of a famous actor>?` — a playful
-  hypothetical became a web search for that person's private residence.
+- `Are you able to change your Humor setting to 100?` Because "Humor" is
+  capitalised it read as a proper noun, so the turn was routed to the web, so
+  the agent searched the internet for information about its own configuration.
+- `Good one` took the same path on a capitalised common word, and a two-word
+  reaction to a joke ended in *"I could not verify that, so I will not answer."*
+- `What if I told you that I am <name of a famous actor>?` turned a playful
+  hypothetical into a web search for that person's private residence.
 
 Every one of those is a **jurisdiction** error rather than a judgement error.
 The contract was deciding what evidence an answer needed *before the answer
@@ -67,7 +67,7 @@ correctly on turns it should never have owned.
 Hard enforcement survives only where the meaning of the turn is not in
 question:
 
-- an explicit request for a tool — "search the web", "check your memory"
+- an explicit request for a tool: "search the web", "check your memory"
 - a bare, parseable arithmetic expression
 - administrative and direct tool-invocation commands
 - a correction to a fact that is about to be written down
@@ -114,7 +114,7 @@ Requires Node 22.19+. There are no runtime dependencies and nothing to build.
 openclaw plugins install --link "$PWD"
 ```
 
-Then add configuration under `plugins.entries.llm-grounded.config` — see
+Then add configuration under `plugins.entries.llm-grounded.config`. See
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md) and
 [examples/config.example.json](examples/config.example.json). Requires OpenClaw
 2026.6.0+.
@@ -133,8 +133,8 @@ import {
 } from "llm-grounded/core";
 ```
 
-Three call sites — before you build the prompt, around tool dispatch, and after
-the model drafts — get you the grounding, sensitive-search and voice gates.
+Three call sites, before you build the prompt, around tool dispatch, and after
+the model drafts, get you the grounding, sensitive-search and voice gates.
 Adding the obligation store and the turn logger is another dozen lines.
 [docs/INTEGRATION.md](docs/INTEGRATION.md) has the full walkthrough, a mapping
 table for common frameworks, and the invariants you must not break in an
@@ -157,7 +157,7 @@ this package ships with nobody's private world compiled into it:
 ```
 
 `agentNames` are the names your agent answers to. Being addressed by name is
-stripped before classification — without this, a capitalised agent name reads
+stripped before classification. Without this, a capitalised agent name reads
 as an external proper noun and the turn goes looking for evidence about its own
 name.
 
@@ -171,15 +171,15 @@ suggestion and nothing else.
 
 ## Documentation
 
-- [Integration](docs/INTEGRATION.md) — using the core outside OpenClaw: the
+- [Integration](docs/INTEGRATION.md): using the core outside OpenClaw. The
   seam, the call sites, per-framework notes, and what you give up
-- [Architecture](docs/ARCHITECTURE.md) — the hooks, the precedence chain, why
+- [Architecture](docs/ARCHITECTURE.md): the hooks, the precedence chain, why
   the classifier is advisory, and what is deliberately not built yet
-- [Configuration](docs/CONFIGURATION.md) — every key, what it does, what
+- [Configuration](docs/CONFIGURATION.md): every key, what it does, what
   happens when it is wrong
-- [Failure catalogue](docs/FAILURE-CATALOGUE.md) — the bugs, with the measured
+- [Failure catalogue](docs/FAILURE-CATALOGUE.md): the bugs, with the measured
   cost of each and the shape of the fix
-- [Telemetry](docs/TELEMETRY.md) — the record format and how to compute a
+- [Telemetry](docs/TELEMETRY.md): the record format and how to compute a
   false-positive rate from it
 
 ## Design notes worth stealing even if you do not use this

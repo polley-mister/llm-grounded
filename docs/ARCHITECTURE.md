@@ -6,7 +6,7 @@ llm-grounded is a per-turn state machine wrapped in host adapters. It holds no
 model of its own and makes no network calls.
 
 The state machine is the part that decides anything, and it is
-framework-independent — see [INTEGRATION.md](INTEGRATION.md). What follows is
+framework-independent; see [INTEGRATION.md](INTEGRATION.md). What follows is
 the shape of the OpenClaw adapter (`src/index.js`), which is the reference
 implementation of the hook points any adapter has to provide.
 
@@ -17,7 +17,7 @@ before_tool_call      block a tool the turn must not use (sensitive search,
                       unauthorized fact write)
 after_tool_call       record what the tool actually returned; bind usable
                       results as evidence
-before_agent_finalize the draft exists — check grounding, check voice, request
+before_agent_finalize the draft exists: check grounding, check voice, request
                       at most one bounded revision
 message_sending       last gate before delivery; substitute the fail-closed
                       sentence if the contract was not met
@@ -36,7 +36,7 @@ and `self-settings` both had to be hoisted above `current-information` because
 that rule was stealing them. Reordering was whack-a-mole by construction.
 
 The deeper problem was not the ordering. It was that the contract decided what
-evidence an answer needed *before the answer existed* — prediction over
+evidence an answer needed *before the answer existed*, which is prediction over
 unbounded input. One function, a capitalised-proper-noun detector, produced
 three of the worst failures on its own.
 
@@ -86,7 +86,7 @@ ordinary conversation.
 |---|---|---|
 | `user_owned_fact` | the user's own assertion | yes |
 | `external_world` | not settled by asserting it | no |
-| `ambiguous` | no proposition to act on | no — ask for clarification |
+| `ambiguous` | no proposition to act on | no, ask for clarification |
 
 `requiredTool` is `null` in every case. A lookup may follow, to find the record
 being superseded, but never to *believe* the new value. The user is the
@@ -111,21 +111,21 @@ prompt files. They drifted once, and the check was blind to its own outcome.
 Development is not frozen to collect a baseline. Instead every telemetry record
 carries:
 
-- `behaviorEpoch` — bumped on every deliberate behaviour change
-- `promptHash`, `rulesetHash`, `configHash` — computed separately, so a prompt
+- `behaviorEpoch`: bumped on every deliberate behaviour change
+- `promptHash`, `rulesetHash`, `configHash`: computed separately, so a prompt
   edit and a rule edit are distinguishable
 
 Analysis segments by epoch. Freeze interpretability, not development.
 
 ## Not built yet
 
-**Phase 2 — settings compilation.** Prose explaining what each persona setting
+**Phase 2, settings compilation.** Prose explaining what each persona setting
 means is what produces a model reciting its own configuration. Strip the prose,
 keep the numbers, measure. Conditional injection is deliberately *not* the
 first move: it converts a fail-open path into a fail-wrong one, which is
 strictly worse for a question about the system's own state.
 
-**Phase 4 — claim verification.** Extract material assertions from the draft
+**Phase 4, claim verification.** Extract material assertions from the draft
 and ask whether this turn's tool results support each one. Fail closed only
 when all four hold: the claim is material, it needs unavailable evidence, one
 retry did not obtain it, and it is stated in unhedged declarative modality.
