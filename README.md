@@ -48,7 +48,7 @@ badly it went. Across 28 ordinary conversational turns:
 Some concrete failures from that period:
 
 - `Are you able to change your Humor setting to 100?` Because "Humor" is
-  capitalised it read as a proper noun, so the turn was routed to the web, so
+  capitalised it reads as a proper noun, so the turn was routed to the web, so
   the agent searched the internet for information about its own configuration.
 - `Good one` took the same path on a capitalised common word, and a two-word
   reaction to a joke ended in *"I could not verify that, so I will not answer."*
@@ -121,8 +121,7 @@ Then add configuration under `plugins.entries.llm-grounded.config`. See
 
 **OpenClaw does not reload plugin code on its own.** Restart the gateway after
 installing or editing, or you will spend an evening debugging behaviour that is
-not the behaviour you have on disk. This has happened to the author more than
-once.
+not the behaviour you have on disk. This has happened one too many times...
 
 ### In any other stack
 
