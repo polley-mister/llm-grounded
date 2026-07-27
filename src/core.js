@@ -172,6 +172,14 @@ export {
 
 export { stateHome, varDir } from "./paths.js";
 
+export {
+  // Human, heartbeat, scheduled automation, system or test. Resolved from host
+  // metadata only; turn content is never consulted.
+  resolveTrafficClass,
+  isTrafficClass,
+  TRAFFIC_CLASSES,
+} from "./traffic.js";
+
 // ---------------------------------------------------------------------------
 // Recorders — optional, async, and the only things here that touch disk
 // ---------------------------------------------------------------------------

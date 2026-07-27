@@ -160,6 +160,49 @@
           "minLength": 1
         },
         "description": "Absolute paths to the prompt surfaces hashed into each telemetry record. Contents are never copied into a record. Missing files hash as absent."
+      },
+      "trafficClasses": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bySessionPrefix": {
+            "type": "object",
+            "additionalProperties": {
+              "enum": [
+                "human",
+                "heartbeat",
+                "scheduled_automation",
+                "system",
+                "synthetic_test"
+              ]
+            },
+            "description": "Session id or key prefix to traffic class. Longest prefix wins."
+          },
+          "byAgent": {
+            "type": "object",
+            "additionalProperties": {
+              "enum": [
+                "human",
+                "heartbeat",
+                "scheduled_automation",
+                "system",
+                "synthetic_test"
+              ]
+            },
+            "description": "Agent id to traffic class, consulted after session prefixes."
+          },
+          "default": {
+            "enum": [
+              "human",
+              "heartbeat",
+              "scheduled_automation",
+              "system",
+              "synthetic_test"
+            ],
+            "description": "Class for a turn no rule matches."
+          }
+        },
+        "description": "Maps host metadata to who or what produced a turn. Turn content is never consulted. Analysis should filter to human: a 30-minute heartbeat otherwise dominates every rate."
       }
     }
   },

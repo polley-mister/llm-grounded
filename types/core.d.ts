@@ -12,5 +12,6 @@ export { normalizeForMatch, tokenize, valuesEquivalent, statesValue, looksSecret
 export { createGroundingStore, isReleasable, queryIsUnrelated, excerptFromToolResult, } from "./state.js";
 export { parseConfig, appliesToAgent, factsApplyToAgent, DEFAULTS, CONFIG_JSON_SCHEMA, } from "./config.js";
 export { stateHome, varDir } from "./paths.js";
+export { resolveTrafficClass, isTrafficClass, TRAFFIC_CLASSES, } from "./traffic.js";
 export { buildTurnRecord, writeTurn, pruneTurns, behaviorIdentity, resetFingerprint, } from "./telemetry.js";
 export { buildEvidence, writeEvidence, pruneEvidence, evidenceFileName, EVIDENCE_VERSION, } from "./evidence.js";

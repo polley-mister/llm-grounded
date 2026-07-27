@@ -210,6 +210,12 @@ export function buildTurnRecord(entry, extra = {}) {
     blockedTools: extra.blockedTools ?? [],
     toolBlocked: Boolean((extra.blockedTools ?? []).length),
 
+    // Who produced this turn. Default analysis should filter to "human":
+    // the heartbeat runs every 30 minutes and would otherwise dominate every
+    // rate computed from this corpus.
+    trafficClass: extra.traffic?.trafficClass ?? "system",
+    trafficReason: extra.traffic?.reason ?? null,
+
     synthetic: Boolean(extra.synthetic),
     syntheticReason: extra.synthetic ? extra.syntheticReason ?? "" : null,
     sessionId: extra.sessionId ?? null,

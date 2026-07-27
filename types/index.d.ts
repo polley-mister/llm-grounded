@@ -179,6 +179,31 @@ export declare function createPlugin(deps?: {}): {
                     };
                     description: string;
                 };
+                trafficClasses: {
+                    type: string;
+                    additionalProperties: boolean;
+                    properties: {
+                        bySessionPrefix: {
+                            type: string;
+                            additionalProperties: {
+                                enum: string[];
+                            };
+                            description: string;
+                        };
+                        byAgent: {
+                            type: string;
+                            additionalProperties: {
+                                enum: string[];
+                            };
+                            description: string;
+                        };
+                        default: {
+                            enum: string[];
+                            description: string;
+                        };
+                    };
+                    description: string;
+                };
             };
         }>;
     }>;
@@ -440,6 +465,31 @@ declare const plugin: {
                     items: {
                         type: string;
                         minLength: number;
+                    };
+                    description: string;
+                };
+                trafficClasses: {
+                    type: string;
+                    additionalProperties: boolean;
+                    properties: {
+                        bySessionPrefix: {
+                            type: string;
+                            additionalProperties: {
+                                enum: string[];
+                            };
+                            description: string;
+                        };
+                        byAgent: {
+                            type: string;
+                            additionalProperties: {
+                                enum: string[];
+                            };
+                            description: string;
+                        };
+                        default: {
+                            enum: string[];
+                            description: string;
+                        };
                     };
                     description: string;
                 };

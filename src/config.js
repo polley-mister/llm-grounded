@@ -6,6 +6,8 @@
 
 import path from "node:path";
 
+import { TRAFFIC_CLASSES } from "./traffic.js";
+
 import { DEFAULT_EVIDENCE_DIR } from "./evidence.js";
 import { varDir, workspaceDir } from "./paths.js";
 
@@ -58,6 +60,11 @@ export const DEFAULTS = Object.freeze({
   // routing costs a slightly worse suggestion and nothing else.
   personalTerms: [],
   agentNames: [],
+  // Who or what produced a turn, resolved from host metadata at the adapter
+  // boundary. Empty means everything classifies as "system": safe, and visibly
+  // wrong in the data rather than silently wrong, which is the failure mode
+  // that made the first corpus unusable.
+  trafficClasses: { bySessionPrefix: {}, byAgent: {}, default: "system" },
   // Prompt surfaces to hash into each telemetry record's `promptHash`. A
   // wording change here alters behaviour without touching code, so a corpus
   // that cannot see it will eventually be used to justify a wrong conclusion.
@@ -216,6 +223,25 @@ export const CONFIG_JSON_SCHEMA = Object.freeze({
       description:
         "Absolute paths to the prompt surfaces hashed into each telemetry record. Contents are never copied into a record. Missing files hash as absent.",
     },
+    trafficClasses: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        bySessionPrefix: {
+          type: "object",
+          additionalProperties: { enum: ["human", "heartbeat", "scheduled_automation", "system", "synthetic_test"] },
+          description: "Session id or key prefix to traffic class. Longest prefix wins.",
+        },
+        byAgent: {
+          type: "object",
+          additionalProperties: { enum: ["human", "heartbeat", "scheduled_automation", "system", "synthetic_test"] },
+          description: "Agent id to traffic class, consulted after session prefixes.",
+        },
+        default: { enum: ["human", "heartbeat", "scheduled_automation", "system", "synthetic_test"], description: "Class for a turn no rule matches." },
+      },
+      description:
+        "Maps host metadata to who or what produced a turn. Turn content is never consulted. Analysis should filter to human: a 30-minute heartbeat otherwise dominates every rate.",
+    },
   },
 });
 
@@ -360,6 +386,42 @@ export function parseConfig(value) {
           return issue(`${key} entries must be plain words, without regex metacharacters`);
         }
         out[key] = raw.map((x) => x.trim());
+        break;
+      }
+      case "trafficClasses": {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          return issue("trafficClasses must be an object");
+        }
+        const allowed = new Set(TRAFFIC_CLASSES);
+        const out2 = { bySessionPrefix: {}, byAgent: {}, default: "system" };
+        for (const [field, value] of Object.entries(raw)) {
+          if (field === "default") {
+            // Rejected rather than coerced. A class name that is almost right
+            // silently splits a bucket, and a corpus with two labels for one
+            // thing cannot be queried after the fact.
+            if (!allowed.has(value)) {
+              return issue(`trafficClasses.default must be one of: ${TRAFFIC_CLASSES.join(", ")}`);
+            }
+            out2.default = value;
+            continue;
+          }
+          if (field !== "bySessionPrefix" && field !== "byAgent") {
+            return issue(`unknown trafficClasses field: ${field}`);
+          }
+          if (!value || typeof value !== "object" || Array.isArray(value)) {
+            return issue(`trafficClasses.${field} must be an object`);
+          }
+          for (const [k, v] of Object.entries(value)) {
+            if (!k) return issue(`trafficClasses.${field} keys must be non-empty`);
+            if (!allowed.has(v)) {
+              return issue(
+                `trafficClasses.${field}.${k} must be one of: ${TRAFFIC_CLASSES.join(", ")}`,
+              );
+            }
+            out2[field][k] = v;
+          }
+        }
+        out.trafficClasses = out2;
         break;
       }
       default:

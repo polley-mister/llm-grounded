@@ -49,6 +49,8 @@ export declare function buildTurnRecord(entry: any, extra?: {}): {
     emittedLane: any;
     blockedTools: any;
     toolBlocked: boolean;
+    trafficClass: any;
+    trafficReason: any;
     synthetic: boolean;
     syntheticReason: any;
     sessionId: any;

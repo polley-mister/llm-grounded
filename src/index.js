@@ -44,6 +44,7 @@ import { detectFactStatement } from "./facts-detect.js";
 import { createOverlayReader, overlayToolResult } from "./facts-overlay.js";
 import { createSessionOverlay, mergeOverlays } from "./session-overlay.js";
 import { resolveDelivery } from "./delivery.js";
+import { resolveTrafficClass } from "./traffic.js";
 import {
   createFactTool,
   FACT_TOOL_NAME,
@@ -932,6 +933,16 @@ export function createPlugin(deps = {}) {
       // Marking beats an external exclusion list: the flag travels with the
       // record, so a corpus copied elsewhere stays correctly labelled.
       ...synthetic(event, ctx),
+      // Resolved from host metadata (session and agent identity), never from
+      // the turn text.
+      traffic: resolveTrafficClass(
+        {
+          sessionId: event?.sessionId ?? ctx?.sessionId,
+          sessionKey: ctx?.sessionKey ?? event?.sessionKey,
+          agentId: ctx?.agentId,
+        },
+        cfg?.trafficClasses,
+      ),
       turnId: k,
       sessionId: event?.sessionId ?? ctx?.sessionId ?? ctx?.sessionKey,
       agentId: ctx?.agentId,

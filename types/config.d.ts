@@ -22,6 +22,11 @@ export declare const DEFAULTS: Readonly<{
     directSessionPrefixes: never[];
     personalTerms: never[];
     agentNames: never[];
+    trafficClasses: {
+        bySessionPrefix: {};
+        byAgent: {};
+        default: string;
+    };
     promptFiles: any[];
 }>;
 export declare const CONFIG_JSON_SCHEMA: Readonly<{
@@ -176,6 +181,31 @@ export declare const CONFIG_JSON_SCHEMA: Readonly<{
             };
             description: string;
         };
+        trafficClasses: {
+            type: string;
+            additionalProperties: boolean;
+            properties: {
+                bySessionPrefix: {
+                    type: string;
+                    additionalProperties: {
+                        enum: string[];
+                    };
+                    description: string;
+                };
+                byAgent: {
+                    type: string;
+                    additionalProperties: {
+                        enum: string[];
+                    };
+                    description: string;
+                };
+                default: {
+                    enum: string[];
+                    description: string;
+                };
+            };
+            description: string;
+        };
     };
 }>;
 /** Validate and normalize plugin config without pulling in the SDK. */
@@ -213,6 +243,11 @@ export declare function parseConfig(value: any): {
         directSessionPrefixes: never[];
         personalTerms: never[];
         agentNames: never[];
+        trafficClasses: {
+            bySessionPrefix: {};
+            byAgent: {};
+            default: string;
+        };
         promptFiles: any[];
     };
 };
@@ -368,6 +403,31 @@ export declare const configSchema: Readonly<{
                 items: {
                     type: string;
                     minLength: number;
+                };
+                description: string;
+            };
+            trafficClasses: {
+                type: string;
+                additionalProperties: boolean;
+                properties: {
+                    bySessionPrefix: {
+                        type: string;
+                        additionalProperties: {
+                            enum: string[];
+                        };
+                        description: string;
+                    };
+                    byAgent: {
+                        type: string;
+                        additionalProperties: {
+                            enum: string[];
+                        };
+                        description: string;
+                    };
+                    default: {
+                        enum: string[];
+                        description: string;
+                    };
                 };
                 description: string;
             };
