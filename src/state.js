@@ -171,7 +171,7 @@ export function createGroundingStore(opts = {}) {
 
   return {
     /** Start (or restart) tracking for one turn. */
-    begin({ runId, sessionKey, kind, correction, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed }) {
+    begin({ runId, sessionKey, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed }) {
       const key = runId ? runKey(runId) : sessionKey ? sessionSlot(sessionKey) : null;
       if (!key) return null;
       const ts = now();
@@ -206,6 +206,23 @@ export function createGroundingStore(opts = {}) {
         factRevisions: 0,
         factOutcome: null,
         factFailClosed: false,
+        // Scope of a correction, needed by resolveOutcomes to tell an
+        // ambiguous correction (ask) from a user-owned one (accept and write).
+        correctionScope: correctionScope ?? null,
+        // The validated proposal, captured before the commit is attempted so a
+        // truthful reply can be rebuilt from it if the draft goes wrong.
+        factProposal: null,
+        // Repairs spent on a draft that falsely claimed the write succeeded.
+        // Its own budget: a turn that already spent maxFactRevisions retrying
+        // the commit would otherwise have nothing left to fix a contradiction,
+        // and would ship it.
+        persistenceClaimRevisions: 0,
+        // The single resolved terminal decision. Lanes render this; they never
+        // recompute it, which is what keeps them from diverging.
+        delivery: null,
+        // Once-latch for terminal telemetry, so several delivery lanes on one
+        // turn produce exactly one record.
+        terminalRecorded: null,
         createdAt: ts,
         updatedAt: ts,
       };
@@ -346,6 +363,49 @@ export function createGroundingStore(opts = {}) {
       entry.factFailClosed = true;
       entry.updatedAt = now();
       return entry;
+    },
+
+    /** Capture the validated proposal a commit is about to be attempted with. */
+    setFactProposal({ runId, sessionKey }, proposal) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry) return null;
+      entry.factProposal = proposal ?? null;
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /** Spend one repair on a draft that falsely claimed durable persistence. */
+    notePersistenceClaimRevision({ runId, sessionKey }) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry) return null;
+      entry.persistenceClaimRevisions += 1;
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /** Stash the resolved terminal decision for the delivery lanes to render. */
+    setDelivery({ runId, sessionKey }, decision) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry) return null;
+      entry.delivery = decision ?? null;
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /**
+     * Claim the right to write this turn's terminal telemetry record.
+     *
+     * Returns true exactly once per turn, for the first lane that asks. Delivery
+     * happens after finalize, so the first lane to fire is the only place that
+     * can honestly report what shipped.
+     */
+    claimTerminalRecord({ runId, sessionKey }, lane) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry) return false;
+      if (entry.terminalRecorded) return false;
+      entry.terminalRecorded = { lane: lane ?? null, at: now() };
+      entry.updatedAt = now();
+      return true;
     },
 
     /** Record the terminal outcome of this turn's fact transaction. */

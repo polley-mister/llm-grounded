@@ -1,11 +1,12 @@
 export { hardTrigger, advisoryText, normalizeArithmetic, isCompleteArithmetic, } from "./explicit.js";
 export { classifyGrounding, describeFeatures, configureAgentNames, configurePersonalTerms, personalTermCount, isAcknowledgement, isSelfSettingsQuestion, isSelfReferenceQuestion, isNegatedAssertion, hasNamedExternalEntity, hasLowercaseExternalReference, stripVocative, stripChannelContext, SATISFYING_TOOLS, } from "./classify.js";
-export { requirementText, revisionInstruction, factRevisionInstruction, isFailClosedText, isFactFailClosedText, CORRECTION_RULE, FACT_RULE, SELF_DESCRIPTION_RULE, VOICE_CODA, FAIL_CLOSED_TEXT, FACT_FAIL_CLOSED_TEXT, } from "./contract.js";
+export { requirementText, revisionInstruction, factRevisionInstruction, persistenceRevisionInstruction, isFailClosedText, isFactFailClosedText, CORRECTION_RULE, FACT_RULE, SELF_DESCRIPTION_RULE, VOICE_CODA, FAIL_CLOSED_TEXT, FACT_FAIL_CLOSED_TEXT, } from "./contract.js";
 export { assessToolSafety, blockMessage, } from "./sensitive.js";
 export { assessVoice, revisionText as voiceRevisionText, depthWasRequested, DEFAULT_MAX_WORDS, } from "./voice.js";
 export { detectFactStatement, hasValueToken, isMostlyQuotation, } from "./facts-detect.js";
 export { resolveCorrection, } from "./corrections.js";
-export { resolveOutcomes, persistenceNote, composeWithNote, claimsPersistence, } from "./persistence.js";
+export { resolveDelivery, } from "./delivery.js";
+export { resolveOutcomes, persistenceNote, composeWithNote, claimsPersistence, safeFallbackText, } from "./persistence.js";
 export { createSessionOverlay, mergeOverlays, } from "./session-overlay.js";
 export { normalizeForMatch, tokenize, valuesEquivalent, statesValue, looksSecret, } from "./values.js";
 export { createGroundingStore, isReleasable, queryIsUnrelated, excerptFromToolResult, } from "./state.js";

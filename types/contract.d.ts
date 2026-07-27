@@ -59,6 +59,17 @@ export declare function factRevisionInstruction(kind: any): string;
  * Never reword: acceptance asserts it verbatim.
  */
 export declare const FACT_FAIL_CLOSED_TEXT = "I couldn't record that safely, so I've changed nothing. Tell me again and I'll retry.";
+/**
+ * Ask the model to withdraw a false claim that the fact was stored.
+ *
+ * Names the specific defect rather than asking for a rewrite. The draft is
+ * otherwise fine and the answer it gives is wanted; only the assertion about
+ * durable storage is false, so that is all this asks it to drop.
+ *
+ * One pass. If the next draft still claims it, the turn is rebuilt from
+ * structured data instead — see `safeFallbackText`.
+ */
+export declare function persistenceRevisionInstruction(): string;
 /** True when the model already produced the fact fail-closed line itself. */
 export declare function isFactFailClosedText(text: any): boolean;
 /** True when the model already produced the fail-closed line itself. */

@@ -181,6 +181,30 @@ export function buildTurnRecord(entry, extra = {}) {
     legacyWouldCompel: extra.policy?.legacyWouldCompel ?? null,
     actualToolUsed: Array.isArray(t.tools) && t.tools.length > 0,
 
+    // The fact turn's two independent outcomes, and the policy that followed.
+    // Kept separate deliberately: "did the operator's correction land" and "did
+    // it reach durable storage" are different questions, and conflating them is
+    // the bug this block exists to make measurable.
+    correctionOutcome: extra.delivery?.correctionOutcome ?? null,
+    persistenceOutcome: extra.delivery?.persistenceOutcome ?? null,
+    responsePolicy: extra.delivery?.responsePolicy ?? null,
+    correctionAppliedToResponse: Boolean(extra.delivery?.correctionAppliedToResponse),
+    persistenceFailureNoted: Boolean(extra.delivery?.persistenceFailureNoted),
+    sessionOverlayApplied: Boolean(extra.delivery?.sessionOverlayApplied),
+    factCommitAttempted: (entry?.factCalls ?? 0) > 0 || entry?.factOutcome != null,
+    factCommitSucceeded: entry?.factOutcome?.ok === true,
+    // Repairs spent on a draft that falsely claimed the write succeeded. On its
+    // own budget, and named for what it repairs: the defect is a false factual
+    // assertion in the draft, not a defective note.
+    persistenceClaimRevisions: entry?.persistenceClaimRevisions ?? 0,
+
+    // Whether a delivery lane was actually seen to emit this text, and which
+    // one. Finalize can only ever report what it resolved; delivery happens
+    // afterwards. A record claiming to be "what shipped" without this would be
+    // asserting something it cannot know.
+    emissionObserved: Boolean(extra.emissionObserved),
+    emittedLane: extra.emittedLane ?? null,
+
     // Safety refusals, kept even though they are rare: a count of zero is the
     // success criterion and needs a field to be zero in.
     blockedTools: extra.blockedTools ?? [],

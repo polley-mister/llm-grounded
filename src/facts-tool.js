@@ -435,8 +435,46 @@ export function createFactTool({ cfg, store, ctx, deps = {}, logger }) {
       } catch {
         // An unreadable overlay only costs the optimistic hint.
       }
+      // The proposal is validated and about to be attempted. Capture it before
+      // the write, for two reasons that both matter only when the write fails:
+      //
+      //   * the session overlay holds the corrected value so the rest of this
+      //     conversation does not read the stale one back;
+      //   * a truthful reply can be rebuilt from structured data if the model's
+      //     draft turns out to claim the write succeeded.
+      //
+      // Session identity is never synthesised. With no stable session key the
+      // overlay is skipped entirely rather than filed under a shared default,
+      // which would leak one conversation's correction into another.
+      store.setFactProposal(key, {
+        factKey: proposal.factKey,
+        subject: proposal.subject,
+        property: proposal.property,
+        operation: proposal.operation,
+        newValue: proposal.newValue,
+        previousValue: proposal.previousValue,
+      });
+      const overlaySessionKey = ctx?.sessionKey ?? entry.sessionKey ?? null;
+      if (overlaySessionKey && deps.sessionOverlay) {
+        deps.sessionOverlay.hold({
+          sessionKey: overlaySessionKey,
+          factKey: proposal.factKey,
+          subject: proposal.subject,
+          property: proposal.property,
+          currentValue: proposal.newValue,
+          supersededValues: proposal.previousValue ? [proposal.previousValue] : [],
+        });
+      }
+
       const transactionId = newId();
-      const result = await commit(
+      // A throw is an outcome, not an escape. The writer spawns a process, so
+      // a spawn failure, a timeout, or a malformed response can all raise —
+      // and an exception escaping here would leave the turn with no recorded
+      // outcome at all, which reads downstream as "never attempted" rather
+      // than "failed". The overlay stays held either way.
+      let result;
+      try {
+        result = await commit(
         {
           factKey: proposal.factKey,
           subject: proposal.subject,
@@ -467,13 +505,29 @@ export function createFactTool({ cfg, store, ctx, deps = {}, logger }) {
           timeoutMs: cfg.factTimeoutMs,
           spawnFn: deps.spawnFn,
         },
-      );
+        );
+      } catch (err) {
+        result = {
+          ok: false,
+          code: "commit-threw",
+          message: String(err?.message ?? err),
+        };
+        logger?.warn?.(`llmGrounded: fact transaction threw: ${result.message}`);
+      }
 
       const outcome = { ...result, factKey: proposal.factKey, attribution: audited.attribution };
       store.setFactOutcome(key, outcome);
-      // A committed record must be visible to the very next retrieval in this
-      // same turn, so the overlay cache is dropped rather than left to expire.
-      if (result.ok) deps.overlay?.invalidate?.();
+      // Success must be explicit. A throw, a timeout, a malformed response or
+      // `ok: undefined` all retain the overlay and stay a persistence failure —
+      // the one thing worse than not writing is believing you did.
+      if (result?.ok === true) {
+        // A committed record must be visible to the very next retrieval in this
+        // same turn, so the overlay cache is dropped rather than left to expire.
+        deps.overlay?.invalidate?.();
+        if (overlaySessionKey && deps.sessionOverlay) {
+          deps.sessionOverlay.release({ sessionKey: overlaySessionKey, factKey: proposal.factKey });
+        }
+      }
 
       if (!result.ok) {
         return failure(result.code, result.message ?? "the transaction was refused", {

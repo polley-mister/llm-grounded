@@ -30,11 +30,9 @@ import {
 import { appliesToAgent, configSchema, factsApplyToAgent, parseConfig } from "./config.js";
 import {
   CORRECTION_RULE,
-  FACT_FAIL_CLOSED_TEXT,
   FACT_RULE,
   FAIL_CLOSED_TEXT,
   factRevisionInstruction,
-  isFactFailClosedText,
   isFailClosedText,
   requirementText,
   revisionInstruction,
@@ -44,6 +42,8 @@ import {
 import { buildEvidence, pruneEvidence, writeEvidence } from "./evidence.js";
 import { detectFactStatement } from "./facts-detect.js";
 import { createOverlayReader, overlayToolResult } from "./facts-overlay.js";
+import { createSessionOverlay, mergeOverlays } from "./session-overlay.js";
+import { resolveDelivery } from "./delivery.js";
 import {
   createFactTool,
   FACT_TOOL_NAME,
@@ -108,6 +108,16 @@ function isVisibleTerminalAssistant(message) {
   return content.some((part) => part?.type === "text" && typeof part.text === "string" && part.text.trim());
 }
 
+/** The visible prose of a transcript message, joined across text parts. */
+function textOf(message) {
+  const content = Array.isArray(message?.content) ? message.content : [];
+  return content
+    .filter((part) => part?.type === "text" && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+}
+
 /** Preserve transcript metadata but remove unverified prose and reasoning traces. */
 function replaceAssistantText(message, text) {
   return {
@@ -144,6 +154,8 @@ export function createPlugin(deps = {}) {
   const now = deps.now ?? (() => Date.now());
   const write = deps.writeEvidence ?? writeEvidence;
   const prune = deps.pruneEvidence ?? pruneEvidence;
+  const writeTurnRecord = deps.writeTurn ?? writeTurn;
+  const pruneTurnRecords = deps.pruneTurns ?? pruneTurns;
   let store = null;
   /** Last config a hook resolved, so the tool factory has a sane fallback. */
   let lastCfg = null;
@@ -183,6 +195,14 @@ export function createPlugin(deps = {}) {
   function middlewareConfig(api) {
     return lastCfg ?? resolveToolConfig({ runtimeConfig: api?.config }, null);
   }
+
+  /**
+   * Corrections accepted but not durably written, held for the life of a
+   * session so the conversation does not read a stale value back. Process
+   * local and never persisted: a failed durable write must not be quietly
+   * replaced by a different durable write somewhere nobody is looking.
+   */
+  const sessionOverlay = deps.sessionOverlay ?? createSessionOverlay();
 
   function ensureOverlay(cfg) {
     if (!overlay) {
@@ -292,6 +312,7 @@ export function createPlugin(deps = {}) {
           // which is the conflation this design exists to avoid.
           kind: hard.kind === "web" || hard.kind === "memory" ? hard.kind : null,
           correction: verdict.correction,
+          correctionScope: hard.correctionScope ?? null,
           reason: verdict.reason,
           turnNonce: nonce,
           userMessage: userTurn,
@@ -513,30 +534,49 @@ export function createPlugin(deps = {}) {
       // present (or its latch is set), do not ask the model to perform a fact
       // transaction against evidence we do not trust.
       if (!releasableNow || alreadyFailClosed) {
+        // Still resolve a terminal decision: the delivery lanes render it, and
+        // a grounding failure that never reaches them ships the unverified
+        // draft. resolveDelivery returns "replace" here, so the fact note is
+        // correctly suppressed while its outcome stays in the record.
+        store.setDelivery(key, terminalDecision(cfg, key, store.get(key) ?? entry, event, ctx));
         await persist(cfg, store.get(key) ?? entry, event, ctx);
         return;
       }
 
       // A turn that unambiguously stated or corrected a durable fact gets one
-      // bounded nudge to record it. If that pass is spent, or the transaction
-      // was attempted and failed, the turn must not ship a normal-sounding
-      // acknowledgement: "got it, the car is an M2" when nothing was written is
-      // a false statement about the state of record, and the operator would believe
-      // it. Delivery is replaced with the standard no-mutation sentence.
+      // bounded nudge to actually call the tool. This is about getting the
+      // write attempted at all, and is separate from what the reply then says
+      // about it.
       const current = store.get(key) ?? entry;
-      if (factEnforcementRequired(cfg, current, ctx)) {
-        if (factRevisionAvailable(cfg, current)) {
-          store.noteFactRevision(key);
-          await persist(cfg, store.get(key) ?? entry, event, ctx);
-          return factRevisionRequest(current);
-        }
-        if (!isFactFailClosedText(event?.lastAssistantMessage)) {
-          store.markFactFailClosed(key);
-          await persist(cfg, store.get(key) ?? entry, event, ctx);
-          return factFailureClosureRequest(current);
-        }
+      if (factEnforcementRequired(cfg, current, ctx) && factRevisionAvailable(cfg, current)) {
+        store.noteFactRevision(key);
+        await persist(cfg, store.get(key) ?? entry, event, ctx);
+        return factRevisionRequest(current);
       }
 
+      // The single terminal decision. Every delivery lane renders this; none of
+      // them recompute it, which is what stops them diverging.
+      const decision = terminalDecision(cfg, key, store.get(key) ?? entry, event, ctx);
+
+      // A draft that claims the write succeeded gets one bounded repair on its
+      // own budget. Sharing the fact-revision budget would mean a turn that
+      // already retried the commit has nothing left to fix a contradiction,
+      // and would ship it.
+      if (decision.action === "revise") {
+        store.notePersistenceClaimRevision(key);
+        await persist(cfg, store.get(key) ?? entry, event, ctx);
+        return {
+          action: "revise",
+          reason: decision.instruction,
+          retry: {
+            instruction: decision.instruction,
+            idempotencyKey: `llm-grounded-persistence:${key.runId ?? key.sessionKey}`,
+            maxAttempts: 1,
+          },
+        };
+      }
+
+      store.setDelivery(key, decision);
       await persist(cfg, store.get(key) ?? entry, event, ctx);
       return;
     },
@@ -557,35 +597,46 @@ export function createPlugin(deps = {}) {
       const entry = store.get({ sessionKey: event?.sessionKey ?? ctx?.sessionKey });
       if (!entry) return;
 
+      // A resolved decision wins outright. Finalize has already decided what
+      // ships; re-deriving "is something still pending" from counters here is
+      // how this lane used to disagree with the others.
+      if (entry.delivery) {
+        if (entry.delivery.action === "pass") return;
+        noteEmission(store, { sessionKey: event?.sessionKey ?? ctx?.sessionKey }, "transcript", entry.delivery.text);
+        return { message: replaceAssistantText(event.message, entry.delivery.text) };
+      }
+
       const groundingPending = !isReleasable(entry);
+      const groundingExhausted = groundingPending && entry.revisions >= cfg.maxRevisions;
+      // Still retrievable: finalize will ask for the bounded revision, and this
+      // draft must not reach the transcript in the meantime.
+      if (groundingPending && !groundingExhausted) return { block: true };
+
       const factPending =
         entry.factTransactionAllowed &&
         entry.factEligible &&
         entry.factUnambiguous &&
         entry.factOutcome?.ok !== true;
-      if (!groundingPending && !factPending) return;
+      if (factPending && factRevisionAvailable(cfg, entry)) return { block: true };
 
-      const groundingExhausted = groundingPending && entry.revisions >= cfg.maxRevisions;
-      const factExhausted = factPending && entry.factRevisions >= cfg.maxFactRevisions;
-      if (groundingExhausted) {
-        return {
-          message: replaceAssistantText(
-            event.message,
-            FAIL_CLOSED_TEXT,
-          ),
-        };
-      }
-      // Fact failures deliberately get one response-only closure pass so the
-      // non-delivery transport (`deliver:false`) receives the same sentence.
-      // Do not persist the preceding failed draft; once the latch is set, the
-      // closure answer itself is persisted after deterministic normalization.
-      if (factExhausted) {
-        if (entry.factFailClosed) {
-          return { message: replaceAssistantText(event.message, FACT_FAIL_CLOSED_TEXT) };
-        }
-        return { block: true };
-      }
-      return { block: true };
+      // This is the lane `deliver:false` reads from — it has no payload hook to
+      // intercept — so the transcript must carry exactly what ships, not a
+      // blocked draft. Resolving here rather than waiting for finalize is safe
+      // because the decision is a pure function of state both hooks can see,
+      // and it is stashed so finalize reuses it instead of recomputing.
+      const key = { runId: event?.runId ?? ctx?.runId, sessionKey: event?.sessionKey ?? ctx?.sessionKey };
+      // The latch is set by the next finalize, which has not run yet. A draft
+      // whose grounding budget is already spent cannot ship regardless, so it
+      // is fail-closed here even though the entry does not say so yet.
+      const effective = groundingExhausted ? { ...entry, failClosed: true } : entry;
+      const decision =
+        entry.delivery ??
+        terminalDecision(cfg, key, effective, { lastAssistantMessage: textOf(event?.message) }, ctx);
+      if (decision.action === "revise") return { block: true };
+      if (decision.action === "pass") return;
+      store.setDelivery(key, decision);
+      noteEmission(store, key, "transcript", decision.text);
+      return { message: replaceAssistantText(event.message, decision.text) };
     },
 
     reply_payload_sending(event, ctx) {
@@ -597,23 +648,25 @@ export function createPlugin(deps = {}) {
       };
       const entry = store.get(key);
       if (!entry) return;
-      if (!entry.failClosed && !entry.factFailClosed) return;
-      const factOnly = !entry.failClosed && entry.factFailClosed;
-      const replacement = factOnly ? FACT_FAIL_CLOSED_TEXT : FAIL_CLOSED_TEXT;
-      const reason = factOnly
-        ? `llmGrounded: durable ${entry.factKind} not recorded`
-        : `llmGrounded: ${entry.kind} grounding not verified`;
-      // One turn can normalize into several payloads. The replacement line
-      // belongs on the first; repeating it once per chunk would be noise.
+      const decision = entry.delivery;
+      if (!decision || decision.action === "pass") return;
+      const reason = deliveryReason(entry, decision);
+      // One turn can normalize into several payloads. The terminal text belongs
+      // on the first; repeating it per chunk would be noise. This cannot drop
+      // the persistence note, because the note is inside that one text rather
+      // than something appended separately per lane.
       if (store.noteFailClosedEmission({ ...key, lane: "payload" }) > 0) {
         return { cancel: true, reason };
       }
+      noteEmission(store, key, "payload", decision.text);
       // Media and rich presentation cannot carry a verified claim, so they are
-      // dropped rather than relabelled.
+      // dropped when the answer itself was withheld. An annotated answer is a
+      // real answer, so its payload is left intact.
+      const payload = event?.payload ?? {};
       return {
         payload: {
-          ...stripUnverifiable(event?.payload ?? {}),
-          text: replacement,
+          ...(decision.action === "replace" ? stripUnverifiable(payload) : payload),
+          text: decision.text,
         },
         reason,
       };
@@ -625,23 +678,21 @@ export function createPlugin(deps = {}) {
       const key = { runId: ctx?.runId, sessionKey: ctx?.sessionKey };
       const entry = store.get(key);
       if (!entry) return;
-      if (!entry.failClosed && !entry.factFailClosed) return;
-      const factOnly = !entry.failClosed && entry.factFailClosed;
+      const decision = entry.delivery;
+      if (!decision || decision.action === "pass") return;
       if (store.noteFailClosedEmission({ ...key, lane: "message" }) > 0) {
-        return {
-          cancel: true,
-          cancelReason: factOnly
-            ? `llmGrounded: durable ${entry.factKind} not recorded`
-            : `llmGrounded: ${entry.kind} grounding not verified`,
-        };
+        return { cancel: true, cancelReason: deliveryReason(entry, decision) };
       }
+      noteEmission(store, key, "message", decision.text);
       return {
-        content: factOnly ? FACT_FAIL_CLOSED_TEXT : FAIL_CLOSED_TEXT,
+        content: decision.text,
         metadata: {
           llmGrounded: {
-            failClosed: !factOnly,
-            factFailClosed: entry.factFailClosed,
+            failClosed: decision.action === "replace",
             grounding: entry.kind,
+            responsePolicy: decision.responsePolicy,
+            persistenceOutcome: decision.persistenceOutcome,
+            sessionOverlayApplied: Boolean(entry.delivery?.sessionOverlayApplied),
           },
         },
       };
@@ -677,9 +728,23 @@ export function createPlugin(deps = {}) {
         return;
       }
       // State is not released here: delivery hooks can still fire afterwards on
-      // gateway paths, and they must still see the fail-closed latch. The TTL
+      // gateway paths, and they must still see the terminal decision. The TTL
       // reclaims it.
       await persist(cfg, entry, event, ctx);
+
+      // Exactly one terminal record per turn. `agent_end` runs after every
+      // delivery lane, so by now `entry.emitted` says what actually left and
+      // through which lane. A run that never delivered records honestly as
+      // unobserved rather than being lost or being labelled as shipped.
+      const key = { runId: ctx?.runId ?? event?.runId, sessionKey: ctx?.sessionKey };
+      if (store.claimTerminalRecord(key, entry.emitted?.lane ?? null)) {
+        const finalizeEvent = entry.finalizeEvent ?? event;
+        await recordTurn(cfg, entry, finalizeEvent, ctx, {
+          final: entry.emitted?.text ?? entry.delivery?.text ?? finalizeEvent?.lastAssistantMessage,
+          emittedLane: entry.emitted?.lane ?? null,
+          emissionObserved: Boolean(entry.emitted),
+        });
+      }
     },
   };
 
@@ -723,26 +788,49 @@ export function createPlugin(deps = {}) {
   }
 
   /**
-   * Force the deterministic no-mutation sentence through non-delivery
-   * transports (notably `openclaw agent --json`). Delivery hooks replace the
-   * payload themselves, but `deliver:false` has no payload hook to intercept.
-   * This pass cannot call the transaction or CASE again; it only renders the
-   * already-latched safety outcome.
+   * Resolve what this turn delivers.
+   *
+   * Called from `before_agent_finalize` and, for the `deliver:false` transport,
+   * from `before_message_write`. Both see the same state and the decision is
+   * pure, so either ordering produces the same answer; the result is stashed so
+   * the second caller reuses it rather than recomputing.
    */
-  function factFailureClosureRequest(entry) {
-    const instruction = [
-      "The vault fact transaction did not commit. Do not call any tool and do not claim the fact was saved.",
-      `Reply with exactly: ${FACT_FAIL_CLOSED_TEXT}`,
-    ].join(" ");
-    return {
-      action: "revise",
-      reason: instruction,
-      retry: {
-        instruction,
-        idempotencyKey: `llm-grounded-fact-closure:${entry.runId ?? entry.sessionKey}`,
-        maxAttempts: 1,
+  function terminalDecision(cfg, key, entry, event, ctx) {
+    const sessionKey = key?.sessionKey ?? ctx?.sessionKey ?? null;
+    const overlayActive = sessionKey ? sessionOverlay.active(sessionKey) : false;
+    const decision = resolveDelivery({
+      // A model that emitted the fail-closed line itself never sets the latch,
+      // so the entry alone would understate what happened. Treat the text as
+      // authoritative, or a fact note could be appended to a refusal.
+      entry: {
+        ...entry,
+        failClosed: Boolean(entry?.failClosed) || isFailClosedText(event?.lastAssistantMessage),
       },
-    };
+      draft: event?.lastAssistantMessage ?? "",
+      overlayActive,
+      structuredFact: entry?.factProposal ?? null,
+      maxPersistenceClaimRevisions: cfg?.maxPersistenceClaimRevisions ?? 1,
+    });
+    return { ...decision, sessionOverlayApplied: overlayActive };
+  }
+
+  /** Why a lane substituted the terminal text, for its cancel/reason field. */
+  function deliveryReason(entry, decision) {
+    if (decision.action === "replace") return `llmGrounded: ${entry.kind} grounding not verified`;
+    return `llmGrounded: durable ${entry.factKind ?? "fact"} not recorded`;
+  }
+
+  /**
+   * Note that a lane emitted the terminal text.
+   *
+   * Bookkeeping only — it never decides what is said. Its job is to let the
+   * telemetry record report the text that was actually observed leaving, rather
+   * than the text finalize resolved and hoped would leave.
+   */
+  function noteEmission(s, key, lane, text) {
+    const entry = s?.get?.(key);
+    if (!entry) return;
+    if (!entry.emitted) entry.emitted = { lane, text };
   }
 
   // Phase 0 telemetry. Held outside the grounding store so a logging change
@@ -811,7 +899,7 @@ export function createPlugin(deps = {}) {
     return { synthetic: true, syntheticReason: match[1] };
   }
 
-  async function recordTurn(cfg, entry, event, ctx) {
+  async function recordTurn(cfg, entry, event, ctx, terminal = {}) {
     if (!cfg?.telemetryDir) return;
     const k = telemetryKey(ctx, event);
     const meta = k ? telemetryFeatures.get(k) : null;
@@ -835,6 +923,11 @@ export function createPlugin(deps = {}) {
       // outcome from what shipped, not from how it got there.
       failedClosed:
         Boolean(entry?.failClosed) || isFailClosedText(event?.lastAssistantMessage),
+      // The two persistence outcomes, the policy that followed from them, and
+      // whether a lane was actually seen to emit the result.
+      delivery: entry?.delivery ?? null,
+      emittedLane: terminal.emittedLane ?? null,
+      emissionObserved: Boolean(terminal.emissionObserved),
       // A session key prefixed "synthetic-" marks a turn produced by testing.
       // Marking beats an external exclusion list: the flag travels with the
       // record, so a corpus copied elsewhere stays correctly labelled.
@@ -842,13 +935,15 @@ export function createPlugin(deps = {}) {
       turnId: k,
       sessionId: event?.sessionId ?? ctx?.sessionId ?? ctx?.sessionKey,
       agentId: ctx?.agentId,
-      final: event?.lastAssistantMessage,
+      // What shipped, as observed by the first delivery lane. Falls back to the
+      // resolved text, then the draft, so a record is never empty.
+      final: terminal.final ?? event?.lastAssistantMessage,
       model: ctx?.modelId ?? event?.modelId ?? null,
       latencyMs: meta?.startedAt ? Date.now() - meta.startedAt : null,
       now: Date.now(),
     });
-    await writeTurn(cfg.telemetryDir, record, deps.logger);
-    await pruneTurns(cfg.telemetryDir, cfg.telemetryRetentionDays, deps.logger);
+    await writeTurnRecord(cfg.telemetryDir, record, deps.logger);
+    await pruneTurnRecords(cfg.telemetryDir, cfg.telemetryRetentionDays, deps.logger);
     if (k) {
       telemetryFeatures.delete(k);
       telemetryDrafts.delete(k);
@@ -914,15 +1009,19 @@ export function createPlugin(deps = {}) {
         async (event, ctx) => {
           noteDraft(ctx, event);
           const result = await handlers.before_agent_finalize(event, ctx);
-          // A revision is not the end of the turn — the next pass logs it.
+          // Telemetry is not written here. Finalize resolves what *should*
+          // ship, but delivery happens afterwards, so a record written now
+          // could only ever claim a resolved intention. The turn is recorded
+          // from `agent_end`, once, with the text a delivery lane actually
+          // observed. The finalize event is stashed because it is the only
+          // place carrying the draft and the model id.
           if (result?.action !== "revise") {
-            const cfg = hookConfig(ctx);
             const key = {
               runId: ctx?.runId ?? event?.runId,
               sessionKey: ctx?.sessionKey ?? event?.sessionKey,
             };
             const entry = store?.get?.(key);
-            if (entry) await recordTurn(cfg, entry, event, ctx);
+            if (entry) entry.finalizeEvent = event;
           }
           return result;
         },
@@ -959,7 +1058,14 @@ export function createPlugin(deps = {}) {
           const callAuthorizes = overlayCalls.delete(event?.toolCallId);
           if (!contextAuthorizes && !callAuthorizes) return;
           const loaded = await ensureOverlay(cfg).load();
-          const applied = overlayToolResult(loaded, event?.result);
+          // A correction the vault refused is still true for this conversation.
+          // The session layer wins on conflict: it exists only because the
+          // durable record is the thing that is wrong.
+          const sessionKey = ctx?.sessionKey ?? event?.sessionKey ?? null;
+          const merged = sessionKey
+            ? mergeOverlays(loaded, sessionOverlay.snapshot(sessionKey))
+            : loaded;
+          const applied = overlayToolResult(merged, event?.result);
           if (!applied) return;
           deps.logger?.debug?.(
             `llmGrounded: overlaid ${applied.conflicts.length} authoritative fact(s) on ${event.toolName}`,
@@ -1002,6 +1108,7 @@ export function createPlugin(deps = {}) {
               ...deps.factDeps,
               llm: deps.factDeps?.llm ?? api?.runtime?.llm,
               overlay: deps.factDeps?.overlay ?? ensureOverlay(cfg),
+              sessionOverlay,
             },
           });
         },

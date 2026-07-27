@@ -207,6 +207,14 @@ export declare function createPlugin(deps?: {}): {
                 idempotencyKey: string;
                 maxAttempts: any;
             };
+        } | {
+            action: string;
+            reason: string | undefined;
+            retry: {
+                instruction: string | undefined;
+                idempotencyKey: string;
+                maxAttempts: number;
+            };
         } | undefined>;
         /**
          * OpenClaw writes a completed assistant message to its transcript before
@@ -241,12 +249,14 @@ export declare function createPlugin(deps?: {}): {
         } | {
             cancel?: undefined;
             cancelReason?: undefined;
-            content: string;
+            content: any;
             metadata: {
                 llmGrounded: {
                     failClosed: boolean;
-                    factFailClosed: any;
                     grounding: any;
+                    responsePolicy: any;
+                    persistenceOutcome: any;
+                    sessionOverlayApplied: boolean;
                 };
             };
         } | undefined;
@@ -461,6 +471,14 @@ declare const plugin: {
                 idempotencyKey: string;
                 maxAttempts: any;
             };
+        } | {
+            action: string;
+            reason: string | undefined;
+            retry: {
+                instruction: string | undefined;
+                idempotencyKey: string;
+                maxAttempts: number;
+            };
         } | undefined>;
         /**
          * OpenClaw writes a completed assistant message to its transcript before
@@ -495,12 +513,14 @@ declare const plugin: {
         } | {
             cancel?: undefined;
             cancelReason?: undefined;
-            content: string;
+            content: any;
             metadata: {
                 llmGrounded: {
                     failClosed: boolean;
-                    factFailClosed: any;
                     grounding: any;
+                    responsePolicy: any;
+                    persistenceOutcome: any;
+                    sessionOverlayApplied: boolean;
                 };
             };
         } | undefined;

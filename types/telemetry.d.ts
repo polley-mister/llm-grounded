@@ -36,6 +36,17 @@ export declare function buildTurnRecord(entry: any, extra?: {}): {
     legacyReason: any;
     legacyWouldCompel: any;
     actualToolUsed: boolean;
+    correctionOutcome: any;
+    persistenceOutcome: any;
+    responsePolicy: any;
+    correctionAppliedToResponse: boolean;
+    persistenceFailureNoted: boolean;
+    sessionOverlayApplied: boolean;
+    factCommitAttempted: boolean;
+    factCommitSucceeded: boolean;
+    persistenceClaimRevisions: any;
+    emissionObserved: boolean;
+    emittedLane: any;
     blockedTools: any;
     toolBlocked: boolean;
     synthetic: boolean;

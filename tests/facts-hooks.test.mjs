@@ -190,7 +190,7 @@ test("evidence excerpts are bounded", async () => {
   assert.ok(evidence[0].excerpt.length <= 201, `excerpt was ${evidence[0].excerpt.length} characters`);
 });
 
-test("an unambiguous uncaptured fact turn gets one transaction nudge, then a closure pass", async () => {
+test("an unambiguous uncaptured fact turn gets one transaction nudge, then ships annotated", async () => {
   const p = plugin();
   const ctx = contexts();
   await p.handlers.before_prompt_build(CORRECTION_TURN, ctx);
@@ -208,9 +208,13 @@ test("an unambiguous uncaptured fact turn gets one transaction nudge, then a clo
   assert.match(first.retry.instruction, /vault_fact_commit/);
   assert.match(first.retry.idempotencyKey, /^llm-grounded-fact:/);
 
+  // The nudge is not repeated. With the budget spent the answer ships, carrying
+  // the disclosure that nothing was written.
   const second = await p.handlers.before_agent_finalize(event, ctx);
-  assert.equal(second.action, "revise", "the transaction nudge is not repeated");
-  assert.match(second.reason, /Do not call any tool/);
+  assert.equal(second, undefined, "the transaction nudge is not repeated");
+  const delivered = p.handlers.message_sending({}, ctx);
+  assert.match(delivered.content, /It.s an M2/);
+  assert.match(delivered.content, /have not stored/i);
 });
 
 test("an ordinary turn is never nudged", async () => {
@@ -387,7 +391,7 @@ async function settle(p, ctx, { outcome, calls = 0 } = {}) {
   return entry;
 }
 
-test("a failed transaction forces a non-delivery closure pass and latches delivery", async () => {
+test("a failed transaction ships the answer with a persistence note", async () => {
   const failures = [
     { ok: false, code: "case-unavailable" },
     { ok: false, code: "case-reject" },
@@ -400,23 +404,21 @@ test("a failed transaction forces a non-delivery closure pass and latches delive
     const ctx = contexts();
     await settle(p, ctx, { outcome, calls: 1 });
 
+    // No closure pass: the draft is clean, so it is annotated rather than
+    // discarded. A failed write does not make the answer false.
     const finalize = await p.handlers.before_agent_finalize(FINALIZE, ctx);
-    assert.equal(finalize.action, "revise", `${outcome.code}: render the fail-closed line`);
-    assert.match(finalize.reason, /Reply with exactly/);
-    assert.match(finalize.reason, /changed nothing/);
+    assert.equal(finalize, undefined, `${outcome.code}: no revision is owed`);
 
-    const entry = p.__store.get({ runId: "run-1" });
-    assert.equal(entry.factFailClosed, true, outcome.code);
-
-    // The acknowledgement never ships.
     const delivered = p.handlers.message_sending({}, ctx);
-    assert.equal(delivered.content, FACT_FAIL_CLOSED_TEXT, outcome.code);
-    assert.equal(delivered.metadata.llmGrounded.factFailClosed, true);
-    assert.notEqual(delivered.content, FINALIZE.lastAssistantMessage);
+    assert.match(delivered.content, /the car is an M2/, outcome.code);
+    assert.match(delivered.content, /failed/i, outcome.code);
+    assert.notEqual(delivered.content, FACT_FAIL_CLOSED_TEXT, outcome.code);
+    assert.equal(delivered.metadata.llmGrounded.persistenceOutcome, "failed");
+    assert.equal(delivered.metadata.llmGrounded.responsePolicy, "answer_with_persistence_note");
   }
 });
 
-test("a turn that never called the tool is nudged once, then fails closed", async () => {
+test("a turn that never called the tool is nudged once, then annotated", async () => {
   const p = plugin();
   const ctx = contexts();
   await settle(p, ctx, { calls: 0 });
@@ -424,23 +426,28 @@ test("a turn that never called the tool is nudged once, then fails closed", asyn
   const first = await p.handlers.before_agent_finalize(FINALIZE, ctx);
   assert.equal(first.action, "revise");
 
-  // The model ignored the nudge. The revision budget is spent, so the turn is
-  // now latched and receives a response-only closure pass.
+  // The model ignored the nudge. The budget is spent, and the durable record
+  // still does not reflect what the operator said, so the answer ships with the
+  // disclosure rather than being replaced by it.
   const second = await p.handlers.before_agent_finalize(FINALIZE, ctx);
-  assert.equal(second.action, "revise");
-  assert.match(second.reason, /Reply with exactly/);
-  assert.equal(p.__store.get({ runId: "run-1" }).factFailClosed, true);
-  assert.equal(p.handlers.message_sending({}, ctx).content, FACT_FAIL_CLOSED_TEXT);
+  assert.equal(second, undefined);
+  const delivered = p.handlers.message_sending({}, ctx);
+  assert.match(delivered.content, /the car is an M2/);
+  assert.match(delivered.content, /have not stored/i);
+  assert.notEqual(delivered.content, FACT_FAIL_CLOSED_TEXT);
 });
 
-test("a refusal is not transacted again; its only retry is the response closure", async () => {
+test("a refusal is not transacted again, and costs no revision", async () => {
+  // A refusal is a decision, not a transient failure. Retrying would invite the
+  // model to reshape the proposal until something passes.
   const p = plugin();
   const ctx = contexts();
   await settle(p, ctx, { outcome: { ok: false, code: "case-reject" }, calls: 1 });
   const result = await p.handlers.before_agent_finalize(FINALIZE, ctx);
-  assert.equal(result.action, "revise");
-  assert.match(result.reason, /Do not call any tool/);
+  assert.equal(result, undefined);
   assert.equal(p.__store.get({ runId: "run-1" }).factRevisions, 0);
+  assert.equal(p.__store.get({ runId: "run-1" }).persistenceClaimRevisions, 0);
+  assert.match(p.handlers.message_sending({}, ctx).content, /failed|not stored/i);
 });
 
 test("a successful transaction delivers the model's own reply untouched", async () => {
@@ -457,7 +464,7 @@ test("a successful transaction delivers the model's own reply untouched", async 
   assert.equal(p.handlers.reply_payload_sending({ payload: { text: "ok" } }, ctx), undefined);
 });
 
-test("the payload path substitutes the same sentence and drops rich content", async () => {
+test("the payload path carries the annotated answer and keeps its rich content", async () => {
   const p = plugin();
   const ctx = contexts();
   await settle(p, ctx, { outcome: { ok: false, code: "case-unavailable" }, calls: 1 });
@@ -467,12 +474,15 @@ test("the payload path substitutes the same sentence and drops rich content", as
     { payload: { text: "Noted!", mediaUrl: "http://x/y.png", presentation: "card" } },
     ctx,
   );
-  assert.equal(first.payload.text, FACT_FAIL_CLOSED_TEXT);
-  assert.equal(first.payload.mediaUrl, undefined);
-  assert.equal(first.payload.presentation, undefined);
+  // An annotated answer is a real answer, so its media survives. Stripping is
+  // for a reply that was withheld, not one that was disclosed.
+  assert.match(first.payload.text, /the car is an M2/);
+  assert.match(first.payload.text, /failed/i);
+  assert.equal(first.payload.mediaUrl, "http://x/y.png");
+  assert.equal(first.payload.presentation, "card");
 
-  // One turn can normalize into several payloads; the sentence belongs on the
-  // first only.
+  // One turn can normalize into several payloads; the terminal text belongs on
+  // the first only.
   const second = p.handlers.reply_payload_sending({ payload: { text: "Noted!" } }, ctx);
   assert.equal(second.cancel, true);
 });
@@ -523,30 +533,28 @@ test("a model that already produced the sentence is not latched twice", async ()
   assert.equal(p.__store.get({ runId: "run-1" }).factFailClosed, false);
 });
 
-test("fact-transaction drafts are not persisted; only the response-only closure reaches the transcript", async () => {
+test("only the annotated terminal text reaches the transcript", async () => {
   const p = plugin();
   const ctx = contexts();
   await settle(p, ctx, { calls: 0 });
   const draft = { role: "assistant", content: [{ type: "thinking", thinking: "I should write this." }, { type: "text", text: "Noted." }] };
 
+  // The tool was never called and a nudge is still available, so this draft is
+  // withheld rather than written.
   assert.deepEqual(p.handlers.before_message_write({ message: draft, sessionKey: ctx.sessionKey, agentId: ctx.agentId }, ctx), { block: true });
-  await p.handlers.before_agent_finalize(FINALIZE, ctx);
+  const nudge = await p.handlers.before_agent_finalize(FINALIZE, ctx);
+  assert.equal(nudge.action, "revise");
 
-  assert.deepEqual(
-    p.handlers.before_message_write(
-      { message: draft, sessionKey: ctx.sessionKey, agentId: ctx.agentId },
-      ctx,
-    ),
-    { block: true },
-  );
-  const closure = await p.handlers.before_agent_finalize(FINALIZE, ctx);
-  assert.equal(closure.action, "revise");
-
-  const finalAttempt = p.handlers.before_message_write(
+  // Budget spent. The transcript now carries exactly what ships — which is what
+  // `deliver:false` reads, since it has no payload hook to intercept.
+  const written = p.handlers.before_message_write(
     { message: draft, sessionKey: ctx.sessionKey, agentId: ctx.agentId },
     ctx,
   );
-  assert.deepEqual(finalAttempt.message.content, [{ type: "text", text: FACT_FAIL_CLOSED_TEXT }]);
+  assert.equal(written.block, undefined, "the terminal text is written, not blocked");
+  assert.equal(written.message.content.length, 1, "reasoning traces are dropped");
+  assert.match(written.message.content[0].text, /Noted\./);
+  assert.match(written.message.content[0].text, /have not stored/i);
 });
 
 

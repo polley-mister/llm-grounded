@@ -68,8 +68,9 @@ export declare function createGroundingStore(opts?: {
     now?: () => number;
 }): {
     /** Start (or restart) tracking for one turn. */
-    begin({ runId, sessionKey, kind, correction, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed }: {
+    begin({ runId, sessionKey, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed }: {
         correction: any;
+        correctionScope: any;
         fact: any;
         factTransactionAllowed: any;
         kind: any;
@@ -149,6 +150,32 @@ export declare function createGroundingStore(opts?: {
         runId: any;
         sessionKey: any;
     }): GroundingEntry | null;
+    /** Capture the validated proposal a commit is about to be attempted with. */
+    setFactProposal({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }, proposal: any): GroundingEntry | null;
+    /** Spend one repair on a draft that falsely claimed durable persistence. */
+    notePersistenceClaimRevision({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }): GroundingEntry | null;
+    /** Stash the resolved terminal decision for the delivery lanes to render. */
+    setDelivery({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }, decision: any): GroundingEntry | null;
+    /**
+     * Claim the right to write this turn's terminal telemetry record.
+     *
+     * Returns true exactly once per turn, for the first lane that asks. Delivery
+     * happens after finalize, so the first lane to fire is the only place that
+     * can honestly report what shipped.
+     */
+    claimTerminalRecord({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }, lane: any): boolean;
     /** Record the terminal outcome of this turn's fact transaction. */
     setFactOutcome({ runId, sessionKey }: {
         runId: any;

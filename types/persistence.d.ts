@@ -56,6 +56,38 @@ export declare function persistenceNote({ overlayActive }?: {
 /** True when the text claims the fact reached durable storage. */
 export declare function claimsPersistence(text: any): boolean;
 /**
+ * Rebuild a truthful reply from structured fact data.
+ *
+ * The escape hatch for a draft that still claims the write succeeded after its
+ * bounded repair. Appending the note to it would knowingly ship a
+ * contradiction, and rewriting the offending sentence is the one thing this
+ * design refuses to do — a renderer that edits model prose to remove a claim is
+ * the surface where numbers start changing. So the prose is discarded and the
+ * reply is *constructed* from the proposal that was already validated and
+ * captured before the commit was attempted.
+ *
+ * That is why this is not prohibited string replacement: nothing here reads the
+ * draft. Every value comes from `structuredFact`.
+ *
+ * Returns null when there is no captured proposal — the model can claim to have
+ * saved something without ever having called the tool, and in that case there
+ * is no value we are entitled to state. The caller falls back to the fixed
+ * no-mutation sentence.
+ *
+ * @param {{operation?: string, subject?: string, property?: string,
+ *          newValue?: string, previousValue?: string}|null} structuredFact
+ * @param {{overlayActive?: boolean}} [opts]
+ */
+export declare function safeFallbackText(structuredFact: {
+    operation?: string;
+    subject?: string;
+    property?: string;
+    newValue?: string;
+    previousValue?: string;
+} | null, { overlayActive }?: {
+    overlayActive?: boolean;
+}): string | null;
+/**
  * Compose the delivered reply.
  *
  * Appends rather than rewrites. Deletion and addition cannot invent; rewriting

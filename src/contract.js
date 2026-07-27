@@ -128,6 +128,25 @@ export function factRevisionInstruction(kind) {
 export const FACT_FAIL_CLOSED_TEXT =
   "I couldn't record that safely, so I've changed nothing. Tell me again and I'll retry.";
 
+/**
+ * Ask the model to withdraw a false claim that the fact was stored.
+ *
+ * Names the specific defect rather than asking for a rewrite. The draft is
+ * otherwise fine and the answer it gives is wanted; only the assertion about
+ * durable storage is false, so that is all this asks it to drop.
+ *
+ * One pass. If the next draft still claims it, the turn is rebuilt from
+ * structured data instead — see `safeFallbackText`.
+ */
+export function persistenceRevisionInstruction() {
+  return [
+    "Your draft says the fact was saved, stored, remembered or updated. It was not:",
+    "the durable write did not succeed.",
+    "Give the same answer, using the value the operator stated, but do not claim",
+    "it was recorded. Do not mention the failure; that sentence is added for you.",
+  ].join(" ");
+}
+
 /** True when the model already produced the fact fail-closed line itself. */
 export function isFactFailClosedText(text) {
   return typeof text === "string" && text.trim() === FACT_FAIL_CLOSED_TEXT;

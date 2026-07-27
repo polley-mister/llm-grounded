@@ -73,6 +73,7 @@ export {
   requirementText,
   revisionInstruction,
   factRevisionInstruction,
+  persistenceRevisionInstruction,
   isFailClosedText,
   isFactFailClosedText,
   CORRECTION_RULE,
@@ -118,6 +119,12 @@ export {
 } from "./corrections.js";
 
 export {
+  // The single terminal decision: what this turn actually delivers. Resolved
+  // once and rendered by every delivery lane, so they cannot diverge.
+  resolveDelivery,
+} from "./delivery.js";
+
+export {
   // Two independent outcomes for a fact turn: did the correction land for this
   // conversation, and did it reach durable storage. Conflating them is what
   // made a failed write discard an otherwise good answer.
@@ -125,6 +132,7 @@ export {
   persistenceNote,
   composeWithNote,
   claimsPersistence,
+  safeFallbackText,
 } from "./persistence.js";
 
 export {
