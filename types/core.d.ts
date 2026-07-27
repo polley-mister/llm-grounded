@@ -5,6 +5,7 @@ export { assessToolSafety, blockMessage, } from "./sensitive.js";
 export { assessVoice, revisionText as voiceRevisionText, depthWasRequested, DEFAULT_MAX_WORDS, } from "./voice.js";
 export { detectFactStatement, hasValueToken, isMostlyQuotation, } from "./facts-detect.js";
 export { resolveCorrection, } from "./corrections.js";
+export { extractClaims, verificationTargets, segment as segmentDraft, CLAIM_TYPES, MODALITIES, EVIDENCE_KINDS, ABSTENTION_REASONS, } from "./claims.js";
 export { resolveDelivery, selectTerminalObservation, } from "./delivery.js";
 export { resolveOutcomes, persistenceNote, composeWithNote, claimsPersistence, safeFallbackText, } from "./persistence.js";
 export { createSessionOverlay, mergeOverlays, } from "./session-overlay.js";

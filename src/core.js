@@ -119,6 +119,18 @@ export {
 } from "./corrections.js";
 
 export {
+  // Claim extraction: read what a draft asserts rather than predict it from the
+  // turn. Offline in this release; see docs/claim-verification.md.
+  extractClaims,
+  verificationTargets,
+  segment as segmentDraft,
+  CLAIM_TYPES,
+  MODALITIES,
+  EVIDENCE_KINDS,
+  ABSTENTION_REASONS,
+} from "./claims.js";
+
+export {
   // The single terminal decision: what this turn actually delivers. Resolved
   // once and rendered by every delivery lane, so they cannot diverge.
   resolveDelivery,
