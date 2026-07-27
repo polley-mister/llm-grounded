@@ -1,0 +1,29 @@
+node_modules/
+npm-debug.log*
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Working copies left by in-place edits. These are how private paths and
+# pre-sanitization content leak into a public repository — never commit them.
+*.bak
+*.bak.*
+*.orig
+*.rej
+
+# Anything the plugin writes at runtime. Telemetry records contain verbatim
+# conversation text and evidence records contain tool output; both are the
+# operator's private data and neither belongs in version control.
+var/
+evidence/
+telemetry/
+*.jsonl
+
+# Local deployment glue: config patches, prompt files, and anything naming a
+# real host or path.
+deploy/
+local/
+*.local.json

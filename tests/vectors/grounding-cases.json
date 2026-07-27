@@ -1,0 +1,300 @@
+{
+  "$comment": "Shared classification vectors. A downstream consumer may mirror this file byte-for-byte so its gate and the plugin gate cannot drift; see tests/manifest.test.mjs. kind: web | memory | null (direct).",
+  "version": 1,
+  "cases": [
+    {
+      "name": "bare arithmetic",
+      "message": "2 + 2",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "arithmetic with wrapper",
+      "message": "what is 2 + 2?",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "larger arithmetic",
+      "message": "calculate 1440 / 24",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "greeting",
+      "message": "hey",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "casual check-in",
+      "message": "how are you holding up",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "creative work naming a place",
+      "message": "Write me a poem about rain in Paris",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "transformation of supplied text",
+      "message": "rewrite this paragraph to be shorter",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "opinion with no external premise",
+      "message": "is it better to write the test first or the code first",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "named external person and fictional event",
+      "message": "How did Boromir die?",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "named external fact plus emotion",
+      "message": "How did Boromir die, and how do you feel about it?",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "current information",
+      "message": "what is the latest release of Node",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "price question",
+      "message": "what is the price of a used turbo",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "today framing",
+      "message": "did anything break today",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "named external product",
+      "message": "what does the Framework Laptop 16 weigh",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "quoted work title",
+      "message": "who wrote \"the pragmatic programmer\"",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "correction of an external claim",
+      "message": "No, that's wrong. He did not die that way.",
+      "kind": "web",
+      "correction": true
+    },
+    {
+      "name": "actually-prefixed correction",
+      "message": "Actually, that release was pulled.",
+      "kind": "web",
+      "correction": true
+    },
+    {
+      "name": "correction of a personal claim",
+      "message": "That's wrong, my car is the 330i.",
+      "kind": "memory",
+      "correction": true
+    },
+    {
+      "name": "personal possessive",
+      "message": "what is my on-call weekend schedule",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "named project",
+      "message": "where did we land on the parts catalogue pricing tiers",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "prior decision",
+      "message": "what did we decide about the deploy gate",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "stated preference",
+      "message": "does Sam prefer bullets or prose in reports",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "homelab infrastructure",
+      "message": "which box runs OPNsense",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "current information outranks personal context",
+      "message": "what is my Proxmox node doing right now",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "personal context outranks a bare external name",
+      "message": "did we ever finish the parts catalogue backtest for Tesla",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "empty message",
+      "message": "   ",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "REGRESSION original transcript: lowercase factual question plus emotion",
+      "message": "how did Boromir die from lord of the rings, how did that make you feel?",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "REGRESSION original transcript: factual negative correction",
+      "message": "The wormhole never collapsed.",
+      "kind": "web",
+      "correction": true
+    },
+    {
+      "name": "REGRESSION original transcript: vocative prefix before arithmetic",
+      "message": "Hey Atlas, what is 1 + 1?",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "lowercase factual question about a named person",
+      "message": "how did feynman die",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "first-person how-question stays direct",
+      "message": "how do i fix this import",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "ordinary-noun subject stays direct",
+      "message": "how does the deploy script work",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "negated instruction is not a correction",
+      "message": "do not deploy that yet",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "first-person negated assertion corrects memory",
+      "message": "I never use tabs.",
+      "kind": "memory",
+      "correction": true
+    },
+    {
+      "name": "vocative address without greeting",
+      "message": "Atlas, what is 12 * 12?",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "bare greeting is still direct",
+      "message": "hey",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "agent name in content is not a vocative",
+      "message": "Atlas is broken",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "emotion alone has no external premise",
+      "message": "how did that make you feel?",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "REGRESSION live acceptance: transport timestamp before a vocative and arithmetic",
+      "message": "[Fri 2026-07-24 18:46 PDT] Hey Atlas, what is 2 + 2?",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "transport prefix does not hide a grounded question",
+      "message": "[Fri 2026-07-24 18:46 PDT] how did Boromir die from lord of the rings?",
+      "kind": "web",
+      "correction": false
+    },
+    {
+      "name": "transport prefix does not hide a memory question",
+      "message": "[Fri 2026-07-24 18:46 PDT] what is my on-call weekend schedule",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "a bracketed expression mid-message is not transport framing",
+      "message": "does the list [1, 2, 3] sort correctly",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "identity question about the agent",
+      "message": "Who are you?",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "capability question naming the agent",
+      "message": "what are you capable of, Atlas?",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "settings readback is answered from context",
+      "message": "what are your settings?",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "self-description request",
+      "message": "tell me about yourself",
+      "kind": null,
+      "correction": false
+    },
+    {
+      "name": "self live state stays grounded",
+      "message": "what is your current config?",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "self project state stays grounded",
+      "message": "what are you working on?",
+      "kind": "memory",
+      "correction": false
+    },
+    {
+      "name": "second-person opener over an external claim",
+      "message": "are you sure Boromir died first?",
+      "kind": "web",
+      "correction": false
+    }
+  ]
+}

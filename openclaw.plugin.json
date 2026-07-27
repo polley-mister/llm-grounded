@@ -1,0 +1,205 @@
+{
+  "id": "groundskeeper",
+  "name": "Groundskeeper",
+  "description": "Deterministic grounding and voice contract for OpenClaw agents.",
+  "version": "1.11.0",
+  "activation": {
+    "onStartup": true,
+    "onCapabilities": [
+      "hook"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabledAgents": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Agent ids this contract applies to. Empty array means every agent."
+      },
+      "evidenceDir": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Directory for per-session grounding evidence records."
+      },
+      "maxRevisions": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2,
+        "description": "Bounded extra model passes requested when grounding is missing."
+      },
+      "stateTtlSeconds": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 3600,
+        "description": "How long per-turn grounding state is retained."
+      },
+      "maxTrackedTurns": {
+        "type": "integer",
+        "minimum": 10,
+        "maximum": 2000,
+        "description": "Upper bound on concurrently tracked turns."
+      },
+      "factsEnabled": {
+        "type": "boolean",
+        "description": "Register the guarded vault_fact_commit tool. Off unless explicitly enabled."
+      },
+      "factsAgents": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Agent ids allowed to use vault_fact_commit. Empty array means no agent."
+      },
+      "vaultPath": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Vault root passed to the Vault Tools writer. Never model-supplied."
+      },
+      "factsCliPath": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Absolute path to the Vault Tools fact transaction entry point."
+      },
+      "pythonPath": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Interpreter used to run the Vault Tools writer."
+      },
+      "caseTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 120000,
+        "description": "Budget for the isolated CASE audit completion."
+      },
+      "factTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 120000,
+        "description": "Budget for the Vault Tools fact transaction."
+      },
+      "maxEvidenceItems": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "How many successful wiki retrievals are bound into the audit packet."
+      },
+      "maxEvidenceChars": {
+        "type": "integer",
+        "minimum": 200,
+        "maximum": 8000,
+        "description": "Per-excerpt character bound for bound vault evidence."
+      },
+      "maxFactRevisions": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Bounded extra model passes when an eligible turn skipped the fact tool."
+      },
+      "maxVoiceRevisions": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2,
+        "description": "Bounded extra passes requested when a reply violates the voice rules. 0 disables the voice gate."
+      },
+      "voiceMaxWords": {
+        "type": "integer",
+        "minimum": 20,
+        "maximum": 400,
+        "description": "Word count above which a reply is treated as long. Targets the tail, not the median."
+      },
+      "behaviorEpoch": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Label for the behaviour regime that produced a record. Bump on every deliberate behaviour change."
+      },
+      "telemetryDir": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Directory for per-turn telemetry (JSONL, one file per day). Empty disables logging."
+      },
+      "telemetryRetentionDays": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 365,
+        "description": "Days of turn telemetry retained. Day files older than this are pruned."
+      },
+      "directSessionPrefixes": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Explicit session-key prefixes treated as a direct owner conversation. Group and channel keys are refused structurally and cannot be allowed here."
+      },
+      "personalTerms": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 2
+        },
+        "description": "Names, projects, hosts and schedule vocabulary belonging to the operator. Matched case-insensitively on word boundaries; questions containing one route to memory rather than the web, and the words are never mistaken for external proper nouns."
+      },
+      "agentNames": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 2
+        },
+        "description": "Names this agent answers to. Being addressed by name is stripped before classification, so a capitalised agent name is not read as a reference to the outside world."
+      }
+    }
+  },
+  "uiHints": {
+    "evidenceDir": {
+      "label": "Evidence directory",
+      "help": "Mission Control reads per-session grounding evidence from here.",
+      "advanced": true
+    },
+    "factsEnabled": {
+      "label": "Enable vault fact transactions",
+      "help": "Registers vault_fact_commit. Requires llm.allowAgentIdOverride for the CASE audit.",
+      "advanced": true
+    },
+    "vaultPath": {
+      "label": "Vault root",
+      "help": "Passed to the Vault Tools writer.",
+      "advanced": true
+    },
+    "factsCliPath": {
+      "label": "Fact writer entry point",
+      "help": "Absolute path to vault_fact_commit.py.",
+      "advanced": true
+    },
+    "maxVoiceRevisions": {
+      "label": "Voice revisions",
+      "help": "Set to 0 to disable the voice gate without reinstalling.",
+      "advanced": true
+    },
+    "telemetryDir": {
+      "label": "Turn telemetry directory",
+      "help": "Per-turn records used to measure classifier false positives. Empty disables.",
+      "advanced": true
+    }
+  },
+  "contracts": {
+    "tools": [
+      "vault_fact_commit"
+    ],
+    "agentToolResultMiddleware": [
+      "openclaw"
+    ]
+  },
+  "toolMetadata": {
+    "vault_fact_commit": {
+      "optional": true,
+      "label": "Vault Fact Commit",
+      "help": "Guarded same-turn transaction that records or corrects one durable personal fact. Owner-authenticated direct turns only."
+    }
+  }
+}

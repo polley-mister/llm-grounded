@@ -1,0 +1,32 @@
+{
+  "plugins": {
+    "entries": {
+      "groundskeeper": {
+        "enabled": true,
+        "config": {
+          "enabledAgents": ["main", "chat"],
+
+          "agentNames": ["atlas"],
+          "personalTerms": [
+            "sam",
+            "rivera",
+            "parts catalogue",
+            "on-call weekend"
+          ],
+
+          "maxRevisions": 1,
+          "stateTtlSeconds": 600,
+          "maxTrackedTurns": 200,
+
+          "maxVoiceRevisions": 1,
+          "voiceMaxWords": 90,
+
+          "behaviorEpoch": "v1.11.0-advisory",
+          "telemetryRetentionDays": 30,
+
+          "factsEnabled": false
+        }
+      }
+    }
+  }
+}
