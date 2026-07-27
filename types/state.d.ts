@@ -160,6 +160,26 @@ export declare function createGroundingStore(opts?: {
         runId: any;
         sessionKey: any;
     }): GroundingEntry | null;
+    /**
+     * Record what a terminal lane saw.
+     *
+     * Called before any early return, so a pass-through turn is observed too.
+     * `external` distinguishes a lane that sends outward from the transcript
+     * write, which is the only lane `deliver:false` reaches.
+     */
+    observeLane({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }, { lane, text, external }: {
+        external?: boolean | undefined;
+        lane: any;
+        text: any;
+    }): any;
+    /** Correct a lane's observation once the plugin has substituted its text. */
+    updateObservedText({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }, lane: any, text: any): any;
     /** Stash the resolved terminal decision for the delivery lanes to render. */
     setDelivery({ runId, sessionKey }: {
         runId: any;

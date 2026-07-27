@@ -122,6 +122,7 @@ export {
   // The single terminal decision: what this turn actually delivers. Resolved
   // once and rendered by every delivery lane, so they cannot diverge.
   resolveDelivery,
+  selectTerminalObservation,
 } from "./delivery.js";
 
 export {

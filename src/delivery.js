@@ -42,6 +42,70 @@ import {
  */
 
 /**
+ * Lane authority, most authoritative first.
+ *
+ * An outbound lane beats the transcript because it is what the operator
+ * actually received. `deliver:false` reaches only `before_message_write`, which
+ * is therefore the highest available observation on that transport rather than
+ * a lesser one.
+ */
+const LANE_PRECEDENCE = ["message", "payload", "transcript"];
+
+/**
+ * Pick the terminal text from what the lanes observed.
+ *
+ * Returns a fallback marked `emissionObserved: false` when no lane fired, so a
+ * record never claims to describe something that shipped when nothing did.
+ *
+ * @param {Array<{lane: string, text: string, external?: boolean}>} observations
+ * @param {{fallbackText?: string, action?: string}} [opts]
+ */
+export function selectTerminalObservation(observations = [], opts = {}) {
+  const seen = Array.isArray(observations) ? observations.filter(Boolean) : [];
+  const action = opts.action ?? null;
+  const base = {
+    deliveryAction: action,
+    // Whether the plugin changed the text, which is a different question from
+    // whether a lane saw it. Conflating the two is what made the first
+    // post-cutover record ambiguous.
+    textMutatedByPlugin: action != null && action !== "pass",
+    observedLanes: seen.map((o) => o.lane),
+    externalDeliveryObserved: seen.some((o) => o.external),
+  };
+
+  if (seen.length === 0) {
+    return {
+      ...base,
+      emissionObserved: false,
+      emittedLane: null,
+      externalDeliveryObserved: false,
+      terminalTextMismatch: false,
+      final: opts.fallbackText ?? null,
+    };
+  }
+
+  // Centralised delivery promises byte-identical text on every lane. A
+  // mismatch means that promise broke, so it is recorded rather than resolved
+  // by silently preferring one.
+  const distinct = new Set(seen.map((o) => o.text));
+
+  let chosen = null;
+  for (const lane of LANE_PRECEDENCE) {
+    chosen = seen.find((o) => o.lane === lane);
+    if (chosen) break;
+  }
+  chosen ??= seen[0];
+
+  return {
+    ...base,
+    emissionObserved: true,
+    emittedLane: chosen.lane,
+    terminalTextMismatch: distinct.size > 1,
+    final: chosen.text,
+  };
+}
+
+/**
  * Decide what this turn actually delivers.
  *
  * @param {{

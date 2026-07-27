@@ -43,7 +43,7 @@ import { buildEvidence, pruneEvidence, writeEvidence } from "./evidence.js";
 import { detectFactStatement } from "./facts-detect.js";
 import { createOverlayReader, overlayToolResult } from "./facts-overlay.js";
 import { createSessionOverlay, mergeOverlays } from "./session-overlay.js";
-import { resolveDelivery } from "./delivery.js";
+import { resolveDelivery, selectTerminalObservation } from "./delivery.js";
 import { resolveTrafficClass } from "./traffic.js";
 import {
   createFactTool,
@@ -598,12 +598,18 @@ export function createPlugin(deps = {}) {
       const entry = store.get({ sessionKey: event?.sessionKey ?? ctx?.sessionKey });
       if (!entry) return;
 
+      const wkey = { runId: event?.runId ?? ctx?.runId, sessionKey: event?.sessionKey ?? ctx?.sessionKey };
+
       // A resolved decision wins outright. Finalize has already decided what
       // ships; re-deriving "is something still pending" from counters here is
       // how this lane used to disagree with the others.
       if (entry.delivery) {
+        // Observe what this lane sees before deciding whether to change it.
+        // This is the only lane `deliver:false` reaches, so on that transport
+        // it is the authoritative record of what shipped.
+        observe(wkey, "transcript", textOf(event?.message), false);
         if (entry.delivery.action === "pass") return;
-        noteEmission(store, { sessionKey: event?.sessionKey ?? ctx?.sessionKey }, "transcript", entry.delivery.text);
+        store.updateObservedText(wkey, "transcript", entry.delivery.text);
         return { message: replaceAssistantText(event.message, entry.delivery.text) };
       }
 
@@ -633,10 +639,13 @@ export function createPlugin(deps = {}) {
       const decision =
         entry.delivery ??
         terminalDecision(cfg, key, effective, { lastAssistantMessage: textOf(event?.message) }, ctx);
+      // Observed before the pass check, so an ordinary turn on this transport
+      // is still recorded as having been seen leaving.
+      observe(key, "transcript", textOf(event?.message), false);
       if (decision.action === "revise") return { block: true };
       if (decision.action === "pass") return;
       store.setDelivery(key, decision);
-      noteEmission(store, key, "transcript", decision.text);
+      store.updateObservedText(key, "transcript", decision.text);
       return { message: replaceAssistantText(event.message, decision.text) };
     },
 
@@ -650,6 +659,9 @@ export function createPlugin(deps = {}) {
       const entry = store.get(key);
       if (!entry) return;
       const decision = entry.delivery;
+      // Observed whether or not anything is substituted: an unchanged payload
+      // is still this turn leaving through an outbound lane.
+      observe(key, "payload", event?.payload?.text, true);
       if (!decision || decision.action === "pass") return;
       const reason = deliveryReason(entry, decision);
       // One turn can normalize into several payloads. The terminal text belongs
@@ -659,7 +671,7 @@ export function createPlugin(deps = {}) {
       if (store.noteFailClosedEmission({ ...key, lane: "payload" }) > 0) {
         return { cancel: true, reason };
       }
-      noteEmission(store, key, "payload", decision.text);
+      store.updateObservedText(key, "payload", decision.text);
       // Media and rich presentation cannot carry a verified claim, so they are
       // dropped when the answer itself was withheld. An annotated answer is a
       // real answer, so its payload is left intact.
@@ -680,11 +692,12 @@ export function createPlugin(deps = {}) {
       const entry = store.get(key);
       if (!entry) return;
       const decision = entry.delivery;
+      observe(key, "message", event?.content, true);
       if (!decision || decision.action === "pass") return;
       if (store.noteFailClosedEmission({ ...key, lane: "message" }) > 0) {
         return { cancel: true, cancelReason: deliveryReason(entry, decision) };
       }
-      noteEmission(store, key, "message", decision.text);
+      store.updateObservedText(key, "message", decision.text);
       return {
         content: decision.text,
         metadata: {
@@ -738,13 +751,16 @@ export function createPlugin(deps = {}) {
       // through which lane. A run that never delivered records honestly as
       // unobserved rather than being lost or being labelled as shipped.
       const key = { runId: ctx?.runId ?? event?.runId, sessionKey: ctx?.sessionKey };
-      if (store.claimTerminalRecord(key, entry.emitted?.lane ?? null)) {
-        const finalizeEvent = entry.finalizeEvent ?? event;
-        await recordTurn(cfg, entry, finalizeEvent, ctx, {
-          final: entry.emitted?.text ?? entry.delivery?.text ?? finalizeEvent?.lastAssistantMessage,
-          emittedLane: entry.emitted?.lane ?? null,
-          emissionObserved: Boolean(entry.emitted),
-        });
+      const finalizeEvent = entry.finalizeEvent ?? event;
+      // Choose the most authoritative observation rather than whichever lane
+      // happened to fire first: an outbound lane is what the operator actually
+      // received, and on deliver:false the transcript is the highest available.
+      const terminal = selectTerminalObservation(entry.deliveryObservations, {
+        action: entry.delivery?.action ?? null,
+        fallbackText: entry.delivery?.text ?? finalizeEvent?.lastAssistantMessage ?? null,
+      });
+      if (store.claimTerminalRecord(key, terminal.emittedLane)) {
+        await recordTurn(cfg, entry, finalizeEvent, ctx, terminal);
       }
     },
   };
@@ -822,16 +838,15 @@ export function createPlugin(deps = {}) {
   }
 
   /**
-   * Note that a lane emitted the terminal text.
+   * Record what a terminal lane saw, before any early return.
    *
-   * Bookkeeping only — it never decides what is said. Its job is to let the
-   * telemetry record report the text that was actually observed leaving, rather
-   * than the text finalize resolved and hoped would leave.
+   * Observed on the pass path too. An earlier version only noted a lane when
+   * the plugin substituted text, which made `emissionObserved` mean "the
+   * plugin changed something" rather than "a lane saw this" — false for every
+   * ordinary turn, and ordinary turns are almost all of them.
    */
-  function noteEmission(s, key, lane, text) {
-    const entry = s?.get?.(key);
-    if (!entry) return;
-    if (!entry.emitted) entry.emitted = { lane, text };
+  function observe(key, lane, text, external) {
+    store?.observeLane?.(key, { lane, text, external });
   }
 
   // Phase 0 telemetry. Held outside the grounding store so a logging change
@@ -932,6 +947,11 @@ export function createPlugin(deps = {}) {
       delivery: entry?.delivery ?? null,
       emittedLane: terminal.emittedLane ?? null,
       emissionObserved: Boolean(terminal.emissionObserved),
+      externalDeliveryObserved: Boolean(terminal.externalDeliveryObserved),
+      deliveryAction: terminal.deliveryAction ?? null,
+      textMutatedByPlugin: Boolean(terminal.textMutatedByPlugin),
+      terminalTextMismatch: Boolean(terminal.terminalTextMismatch),
+      observedLanes: terminal.observedLanes ?? [],
       // A session key prefixed "synthetic-" marks a turn produced by testing.
       // Marking beats an external exclusion list: the flag travels with the
       // record, so a corpus copied elsewhere stays correctly labelled.

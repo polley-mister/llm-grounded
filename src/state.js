@@ -223,6 +223,11 @@ export function createGroundingStore(opts = {}) {
         // Once-latch for terminal telemetry, so several delivery lanes on one
         // turn produce exactly one record.
         terminalRecorded: null,
+        // What each terminal lane actually saw. Every lane appends here,
+        // including on the pass path where the plugin changes nothing —
+        // otherwise "was this text observed leaving" is unanswerable for
+        // ordinary turns, which are almost all of them.
+        deliveryObservations: [],
         createdAt: ts,
         updatedAt: ts,
       };
@@ -381,6 +386,39 @@ export function createGroundingStore(opts = {}) {
       entry.persistenceClaimRevisions += 1;
       entry.updatedAt = now();
       return entry;
+    },
+
+    /**
+     * Record what a terminal lane saw.
+     *
+     * Called before any early return, so a pass-through turn is observed too.
+     * `external` distinguishes a lane that sends outward from the transcript
+     * write, which is the only lane `deliver:false` reaches.
+     */
+    observeLane({ runId, sessionKey }, { lane, text, external = false }) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry || !lane) return null;
+      const existing = entry.deliveryObservations.find((o) => o.lane === lane);
+      if (existing) {
+        // A lane firing twice (multi-chunk payloads) keeps its first text.
+        existing.repeats = (existing.repeats ?? 0) + 1;
+        return existing;
+      }
+      const observation = { lane, text: String(text ?? ""), external: Boolean(external), repeats: 0 };
+      entry.deliveryObservations.push(observation);
+      entry.updatedAt = now();
+      return observation;
+    },
+
+    /** Correct a lane's observation once the plugin has substituted its text. */
+    updateObservedText({ runId, sessionKey }, lane, text) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry) return null;
+      const observation = entry.deliveryObservations.find((o) => o.lane === lane);
+      if (!observation) return null;
+      observation.text = String(text ?? "");
+      entry.updatedAt = now();
+      return observation;
     },
 
     /** Stash the resolved terminal decision for the delivery lanes to render. */

@@ -241,8 +241,20 @@ export function buildTurnRecord(entry, extra = {}) {
     // one. Finalize can only ever report what it resolved; delivery happens
     // afterwards. A record claiming to be "what shipped" without this would be
     // asserting something it cannot know.
+    // Did a terminal host lane see this text, and which one. Distinct from
+    // whether the plugin changed it: an ordinary pass-through turn is still
+    // observed leaving.
     emissionObserved: Boolean(extra.emissionObserved),
     emittedLane: extra.emittedLane ?? null,
+    // Whether it left through an outbound lane rather than only the transcript.
+    // False on deliver:false, which is correct rather than a gap.
+    externalDeliveryObserved: Boolean(extra.externalDeliveryObserved),
+    deliveryAction: extra.deliveryAction ?? null,
+    textMutatedByPlugin: Boolean(extra.textMutatedByPlugin),
+    // Centralised delivery promises byte-identical text on every lane. True
+    // here means that promise broke, and is a smoke-test failure.
+    terminalTextMismatch: Boolean(extra.terminalTextMismatch),
+    observedLanes: extra.observedLanes ?? [],
 
     // Safety refusals, kept even though they are rare: a count of zero is the
     // success criterion and needs a field to be zero in.
