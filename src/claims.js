@@ -61,6 +61,11 @@ export const ABSTENTION_REASONS = Object.freeze([
   "low_confidence",
   "oversized",
   "empty_draft",
+  // A claim that bundles several independently checkable propositions cannot
+  // be mapped to distinct evidence, which is the entire purpose of extraction.
+  // Abstaining makes that failure measurable; repairing it would hide the one
+  // thing worth measuring.
+  "non_atomic_claims",
 ]);
 
 export const PROMPT_VERSION = "claims-v1";
@@ -164,8 +169,27 @@ function noClaims(provenance) {
 export function validateClaim(raw, { draft, spans }) {
   if (!raw || typeof raw !== "object") return null;
 
-  const text = typeof raw.text === "string" ? raw.text.trim() : "";
-  if (!text || text.length > MAX_CLAIM_CHARS) return null;
+  // `surfaceText` is what appears in the draft and must locate against
+  // offsets. `text` is accepted as its legacy name so a prompt that predates
+  // this field still validates and the baseline stays comparable.
+  const surfaceText =
+    typeof raw.surfaceText === "string" && raw.surfaceText.trim()
+      ? raw.surfaceText.trim()
+      : typeof raw.text === "string"
+        ? raw.text.trim()
+        : "";
+  if (!surfaceText || surfaceText.length > MAX_CLAIM_CHARS) return null;
+
+  // `proposition` is the atomic, truth-evaluable form. A draft may answer with
+  // a fragment — "Four hundred and eight." — whose subject and operation live
+  // in the operator's turn. Evidence matching needs the complete proposition,
+  // so it is deliberately NOT required to be a substring of the draft.
+  const proposition =
+    typeof raw.proposition === "string" && raw.proposition.trim()
+      ? raw.proposition.trim()
+      : surfaceText;
+  if (proposition.length > MAX_CLAIM_CHARS) return null;
+  const text = surfaceText;
 
   if (!CLAIM_TYPES.includes(raw.claimType)) return null;
   if (!MODALITIES.includes(raw.modality)) return null;
@@ -178,6 +202,11 @@ export function validateClaim(raw, { draft, spans }) {
     if (kind.startsWith("claim:")) continue;
     if (!EVIDENCE_KINDS.includes(kind)) return null;
   }
+
+  // Claims this one is derived from. A calculated conclusion that does not
+  // name its premises forces the next stage to reverse-engineer them.
+  const dependsOn = Array.isArray(raw.dependsOn) ? raw.dependsOn : [];
+  if (dependsOn.some((d) => typeof d !== "string" || !d)) return null;
 
   const confidence = Number(raw.confidence);
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return null;
@@ -201,7 +230,12 @@ export function validateClaim(raw, { draft, spans }) {
 
   return {
     id: typeof raw.id === "string" && raw.id ? raw.id.slice(0, 16) : null,
+    surfaceText,
+    proposition,
+    // Retained so existing consumers and the scorer keep working; always equal
+    // to surfaceText.
     text,
+    dependsOn,
     sourceStart: start,
     sourceEnd: end,
     sentenceIndex: sentenceIndex >= 0 ? sentenceIndex : null,
@@ -218,6 +252,48 @@ export function validateClaim(raw, { draft, spans }) {
     requiredEvidence: required.length ? [...required] : ["none"],
     confidence,
   };
+}
+
+/**
+ * Evidence kinds that come from genuinely different places.
+ *
+ * A single claim needing two of these is bundling two propositions: whatever
+ * the memory supports and whatever the web supports cannot be the same
+ * assertion.
+ */
+const INDEPENDENT_SOURCES = ["web", "memory", "system"];
+
+/**
+ * Reject a claim set that is not atomic.
+ *
+ * Only the cases decidable *mechanically* are checked. A third rule was
+ * considered and rejected — "the proposition contains several truth-evaluable
+ * clauses" cannot be decided without parsing meaning, and a regex that tried
+ * would be the same mistake as the classifier: a heuristic making a semantic
+ * judgement it is not equipped to make. Non-atomicity of that kind shows up in
+ * scoring instead, where a human can see it.
+ *
+ * @returns {string|null} a reason, or null when the set is acceptable
+ */
+export function checkAtomicity(claims) {
+  const factualTypes = new Set(["stored_personal", "current_external", "system_or_runtime_state"]);
+  const hasFactualPeers = claims.some((c) => factualTypes.has(c.claimType));
+
+  for (const claim of claims) {
+    const kinds = claim.requiredEvidence.filter((k) => INDEPENDENT_SOURCES.includes(k));
+    const references = claim.requiredEvidence.some((k) => k.startsWith("claim:")) || claim.dependsOn.length > 0;
+
+    // Two independent sources in one claim, with nothing saying it is derived
+    // from other claims: this is a compound sentence wearing one label.
+    if (kinds.length > 1 && !references) return "non_atomic_claims";
+
+    // A conclusion that depends on facts must name them, or the evidence stage
+    // has to guess which premises it is standing on.
+    if (claim.claimType === "calculated" && hasFactualPeers && !references) {
+      return "non_atomic_claims";
+    }
+  }
+  return null;
 }
 
 /**
@@ -252,6 +328,10 @@ export function parseExtraction(text, { draft, spans }) {
     if (!claim) return { ok: false, reason: "malformed_output" };
     claims.push({ ...claim, id: claim.id ?? `c${claims.length + 1}` });
   }
+
+  const atomicity = checkAtomicity(claims);
+  if (atomicity) return { ok: false, reason: atomicity };
+
   return { ok: true, claims };
 }
 

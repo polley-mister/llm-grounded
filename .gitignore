@@ -21,6 +21,11 @@ var/
 evidence/
 telemetry/
 *.jsonl
+# ...except curated test corpora, which are fixtures rather than captured data.
+# The rule above exists to keep telemetry and evidence out; it silently
+# swallowed a required fixture, and no test could catch that because nothing
+# loads the fixture at test time.
+!tests/fixtures/*.jsonl
 
 # Local deployment glue: config patches, prompt files, and anything naming a
 # real host or path.

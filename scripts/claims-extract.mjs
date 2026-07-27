@@ -95,6 +95,7 @@ async function loadCorpus(file) {
       userTurn: r.userTurn ?? "",
       draft: r.draft ?? "",
       goldClaims: Array.isArray(r.goldClaims) ? r.goldClaims : null,
+      scenarioFamily: r.scenarioFamily ?? null,
       source: "corpus",
     }));
 }
@@ -144,15 +145,22 @@ async function loadTelemetry(dir) {
  */
 function matches(pred, gold) {
   const norm = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9$.,%°]+/g, " ").trim();
-  const a = norm(pred.text);
-  const b = norm(gold.text);
-  if (!a || !b) return false;
-  if (a.includes(b) || b.includes(a)) return true;
-  const at = new Set(a.split(" ").filter((w) => w.length > 2));
-  const bt = b.split(" ").filter((w) => w.length > 2);
-  if (!bt.length) return false;
-  const hit = bt.filter((w) => at.has(w)).length;
-  return hit / bt.length >= 0.6;
+  // Either form may match. A reconstructed proposition ("17 multiplied by 24
+  // equals 408") and the surface fragment it came from ("Four hundred and
+  // eight.") share almost no tokens, so requiring one or the other would
+  // score the extractor on which field it happened to fill.
+  const preds = [norm(pred.proposition), norm(pred.surfaceText ?? pred.text)].filter(Boolean);
+  const golds = [norm(gold.proposition), norm(gold.surfaceText ?? gold.text)].filter(Boolean);
+  for (const a of preds) {
+    for (const b of golds) {
+      if (a.includes(b) || b.includes(a)) return true;
+      const at = new Set(a.split(" ").filter((w) => w.length > 2));
+      const bt = b.split(" ").filter((w) => w.length > 2);
+      if (!bt.length) continue;
+      if (bt.filter((w) => at.has(w)).length / bt.length >= 0.6) return true;
+    }
+  }
+  return false;
 }
 
 function score(records) {
@@ -166,6 +174,15 @@ function score(records) {
     perType: {},
     predictedClaims: 0,
     goldClaims: 0,
+    // Composite families are the ones that must decompose. A single claim over
+    // a sentence carrying memory and web premises cannot be mapped to distinct
+    // evidence, which is the whole point of the next stage.
+    composite: { turns: 0, decomposed: 0 },
+    // Bare answers are the elliptical case: the proposition lives partly in the
+    // operator's turn, so recall here measures reconstruction, not detection.
+    bareAnswer: { gold: 0, found: 0 },
+    // The invariant that must never regress while recall improves.
+    invalidAccepted: 0,
   };
 
   for (const r of records) {
@@ -185,11 +202,27 @@ function score(records) {
       if (material.length > 0) m.conversationalWithMaterialClaim += 1;
       continue;
     }
+
+    if (r.scenarioFamily === "composite") {
+      m.composite.turns += 1;
+      // Decomposed means: at least as many claims as gold premises, and no
+      // single claim bundling two independent sources.
+      const bundled = r.predictedClaims.some(
+        (p) => ["web", "memory", "system"].filter((k) => p.requiredEvidence?.includes(k)).length > 1,
+      );
+      if (r.predictedClaims.length >= r.goldClaims.length && !bundled) m.composite.decomposed += 1;
+    }
+
     for (const g of r.goldClaims) {
       const t = g.claimType;
       m.perType[t] ??= { gold: 0, found: 0 };
       m.perType[t].gold += 1;
-      if (r.predictedClaims.some((p) => matches(p, g))) m.perType[t].found += 1;
+      const found = r.predictedClaims.some((p) => matches(p, g));
+      if (found) m.perType[t].found += 1;
+      if (r.scenarioFamily === "bare-answer") {
+        m.bareAnswer.gold += 1;
+        if (found) m.bareAnswer.found += 1;
+      }
     }
   }
   return m;
@@ -218,6 +251,21 @@ function report(m) {
     lines.push("");
     // Raw counts, deliberately. A rate over this many turns would be a
     // number with no confidence interval worth quoting.
+    if (m.composite.turns) {
+      lines.push(
+        `atomic decomposition on composite turns: ` +
+          `${m.composite.decomposed}/${m.composite.turns}  ${pct(m.composite.decomposed, m.composite.turns)}`,
+      );
+    }
+    if (m.bareAnswer.gold) {
+      lines.push(
+        `bare-answer claim recall: ` +
+          `${m.bareAnswer.found}/${m.bareAnswer.gold}  ${pct(m.bareAnswer.found, m.bareAnswer.gold)}`,
+      );
+    }
+    lines.push("");
+    // The gate that must hold at 0 regardless of what recall does.
+    lines.push(`invalid output accepted as valid: ${m.invalidAccepted}`);
     lines.push(
       `conversational turns given a material claim: ` +
         `${m.conversationalWithMaterialClaim} of ${m.conversationalTurns}`,
@@ -273,6 +321,7 @@ async function main() {
       split: row.split,
       source: row.source,
       trafficClass: row.trafficClass ?? null,
+      scenarioFamily: row.scenarioFamily ?? null,
       userTurn: row.userTurn,
       draft: row.draft,
       sentenceCount: segment(row.draft).length,

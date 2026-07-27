@@ -33,7 +33,10 @@ export declare function validateClaim(raw: any, { draft, spans }: {
     spans: any;
 }): {
     id: any;
+    surfaceText: any;
+    proposition: any;
     text: any;
+    dependsOn: any;
     sourceStart: any;
     sourceEnd: any;
     sentenceIndex: any;
@@ -45,6 +48,19 @@ export declare function validateClaim(raw: any, { draft, spans }: {
     requiredEvidence: any[];
     confidence: number;
 } | null;
+/**
+ * Reject a claim set that is not atomic.
+ *
+ * Only the cases decidable *mechanically* are checked. A third rule was
+ * considered and rejected — "the proposition contains several truth-evaluable
+ * clauses" cannot be decided without parsing meaning, and a regex that tried
+ * would be the same mistake as the classifier: a heuristic making a semantic
+ * judgement it is not equipped to make. Non-atomicity of that kind shows up in
+ * scoring instead, where a human can see it.
+ *
+ * @returns {string|null} a reason, or null when the set is acceptable
+ */
+export declare function checkAtomicity(claims: any): string | null;
 /**
  * Parse and validate a whole extraction payload.
  *
@@ -62,7 +78,10 @@ export declare function parseExtraction(text: any, { draft, spans }: {
     reason?: undefined;
     ok: boolean;
     claims: {
+        surfaceText: any;
+        proposition: any;
         text: any;
+        dependsOn: any;
         sourceStart: any;
         sourceEnd: any;
         sentenceIndex: any;
@@ -119,7 +138,10 @@ export declare function extractClaims(input?: {
         promptVersion: string;
     };
     claims: {
+        surfaceText: any;
+        proposition: any;
         text: any;
+        dependsOn: any;
         sourceStart: any;
         sourceEnd: any;
         sentenceIndex: any;

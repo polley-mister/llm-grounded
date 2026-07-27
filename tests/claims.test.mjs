@@ -9,6 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  checkAtomicity,
   extractClaims,
   parseExtraction,
   validateClaim,
@@ -285,4 +286,140 @@ test("the enums are the contract", () => {
 test("verificationTargets is empty for any non-extracted status", async () => {
   assert.deepEqual(verificationTargets(await extractClaims({ draft: "x." }, {})), []);
   assert.deepEqual(verificationTargets(await extractClaims({ draft: "x." }, { llm: stub(payload([])) })), []);
+});
+
+// ---------------------------------------------------------------------------
+// surfaceText / proposition / dependsOn  (schema v2)
+// ---------------------------------------------------------------------------
+
+test("proposition may reconstruct what the draft leaves out", async () => {
+  // "Four hundred and eight." is not a proposition on its own. The subject and
+  // the operation live in the operator's turn, and evidence matching needs the
+  // complete form — so proposition is deliberately not required to be a
+  // substring of the draft.
+  const draft = "Four hundred and eight.";
+  const r = await extractClaims({ userTurn: "What is 17 * 24?", draft }, {
+    llm: stub(payload([claim({
+      surfaceText: draft,
+      proposition: "17 multiplied by 24 equals 408.",
+      text: undefined,
+      claimType: "calculated",
+      requiredEvidence: ["calculation"],
+      sourceStart: 0,
+      sourceEnd: draft.length,
+    })])),
+  });
+  assert.equal(r.status, "extracted");
+  assert.equal(r.claims[0].surfaceText, draft);
+  assert.equal(r.claims[0].proposition, "17 multiplied by 24 equals 408.");
+  assert.equal(r.claims[0].sourceStart, 0, "the surface form still locates in the draft");
+});
+
+test("proposition defaults to the surface form when absent", async () => {
+  const draft = "The card currently costs $4,000.";
+  const r = await extractClaims({ draft }, {
+    llm: stub(payload([claim({ text: draft, sourceStart: 0, sourceEnd: draft.length })])),
+  });
+  assert.equal(r.status, "extracted");
+  assert.equal(r.claims[0].proposition, draft);
+});
+
+test("the legacy text field still validates", async () => {
+  // v1 prompts predate surfaceText. Accepting both keeps the frozen baseline
+  // comparable rather than forcing a prompt change into a schema commit.
+  const draft = "Water boils at 100°C.";
+  const r = await extractClaims({ draft }, {
+    llm: stub(payload([claim({
+      text: draft, claimType: "stable_general", requiredEvidence: ["none"],
+      sourceStart: 0, sourceEnd: draft.length,
+    })])),
+  });
+  assert.equal(r.status, "extracted");
+  assert.equal(r.claims[0].surfaceText, draft);
+});
+
+test("dependsOn is carried and must be strings", async () => {
+  const draft = "So no.";
+  const good = await extractClaims({ draft }, {
+    llm: stub(payload([
+      claim({ id: "c1", text: "budget", claimType: "stored_personal", requiredEvidence: ["memory"], sourceStart: 0, sourceEnd: 2 }),
+      claim({ id: "c2", text: "price", claimType: "current_external", requiredEvidence: ["web"], sourceStart: 3, sourceEnd: 5 }),
+      claim({ id: "c3", text: "so", claimType: "calculated", requiredEvidence: ["calculation"], dependsOn: ["c1", "c2"], sourceStart: 0, sourceEnd: 2 }),
+    ])),
+  });
+  assert.equal(good.status, "extracted");
+  assert.deepEqual(good.claims[2].dependsOn, ["c1", "c2"]);
+
+  const bad = await extractClaims({ draft }, {
+    llm: stub(payload([claim({ text: "x", dependsOn: [7], sourceStart: 0, sourceEnd: 1 })])),
+  });
+  assert.equal(bad.status, "abstained");
+});
+
+test("overlapping source spans are legal", async () => {
+  // One sentence can carry several atomic claims, so two claims pointing into
+  // the same span is correct rather than a conflict.
+  const draft = "Your $3,500 budget is short of the $4,000 price.";
+  const r = await extractClaims({ draft }, {
+    llm: stub(payload([
+      claim({ id: "c1", text: "Your $3,500 budget", claimType: "stored_personal", requiredEvidence: ["memory"], sourceStart: 0, sourceEnd: 18 }),
+      claim({ id: "c2", text: "the $4,000 price", claimType: "current_external", requiredEvidence: ["web"], sourceStart: 31, sourceEnd: 47 }),
+      claim({ id: "c3", text: "is short of", claimType: "calculated", requiredEvidence: ["calculation"], dependsOn: ["c1", "c2"], sourceStart: 0, sourceEnd: 47 }),
+    ])),
+  });
+  assert.equal(r.status, "extracted");
+  assert.equal(r.claims.length, 3);
+});
+
+// ---------------------------------------------------------------------------
+// Atomicity
+// ---------------------------------------------------------------------------
+
+test("a claim bundling two independent sources abstains as non-atomic", async () => {
+  // Whatever memory supports and whatever the web supports cannot be the same
+  // assertion. Bundling them is a compound sentence wearing one label, and it
+  // cannot be mapped to distinct evidence.
+  const draft = "Your $3,500 budget is not enough for the current $4,000 price.";
+  const r = await extractClaims({ draft }, {
+    llm: stub(payload([claim({ text: draft, requiredEvidence: ["memory", "web"], sourceStart: 0, sourceEnd: draft.length })])),
+  });
+  assert.equal(r.status, "abstained");
+  assert.equal(r.reason, "non_atomic_claims");
+});
+
+test("a calculated claim with factual peers must name its dependencies", async () => {
+  const draft = "So it is not enough.";
+  const r = await extractClaims({ draft }, {
+    llm: stub(payload([
+      claim({ id: "c1", text: "budget", claimType: "stored_personal", requiredEvidence: ["memory"], sourceStart: 0, sourceEnd: 2 }),
+      claim({ id: "c2", text: "not enough", claimType: "calculated", requiredEvidence: ["calculation"], sourceStart: 3, sourceEnd: 13 }),
+    ])),
+  });
+  assert.equal(r.status, "abstained");
+  assert.equal(r.reason, "non_atomic_claims");
+});
+
+test("a bundled claim that declares dependencies is accepted", () => {
+  // Multi-source is legal once the claim says it is derived: the evidence stage
+  // then knows which premises it stands on.
+  assert.equal(checkAtomicity([
+    { claimType: "calculated", requiredEvidence: ["memory", "web"], dependsOn: ["c1", "c2"] },
+  ]), null);
+});
+
+test("a lone calculated claim needs no dependencies", () => {
+  // Pure arithmetic stands on nothing external.
+  assert.equal(checkAtomicity([
+    { claimType: "calculated", requiredEvidence: ["calculation"], dependsOn: [] },
+  ]), null);
+});
+
+test("atomicity is not decided by parsing prose", () => {
+  // A third rule was considered — "the proposition contains several clauses" —
+  // and rejected: it cannot be decided without parsing meaning, and a regex
+  // that tried would be the classifier's mistake in a new place.
+  assert.equal(checkAtomicity([
+    { claimType: "current_external", requiredEvidence: ["web"], dependsOn: [],
+      proposition: "It costs $4,000 and ships on Friday." },
+  ]), null);
 });
