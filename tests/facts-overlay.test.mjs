@@ -17,8 +17,8 @@ const CAR = {
     "operator.vehicle.car.chassis": {
       subject: "the car",
       property: "chassis code",
-      currentValue: "M2",
-      supersededValues: ["F30"],
+      currentValue: "TC20",
+      supersededValues: ["TC10"],
       revision: 2,
       page: "facts/operator-vehicle-car-chassis.md",
       needsRematerialization: true,
@@ -27,7 +27,7 @@ const CAR = {
 };
 
 const STALE_PROSE =
-  "the car — Vehicle Records\n\nVehicle records for the operator's BMW 330i, an F30 chassis with the N54.";
+  "the car — Vehicle Records\n\nVehicle records for the operator's BMW 330i, an TC10 chassis with the N54.";
 
 test("stale prose is detected and the authoritative value leads", () => {
   const result = overlayText(CAR, STALE_PROSE);
@@ -36,14 +36,14 @@ test("stale prose is detected and the authoritative value leads", () => {
   // The block leads, so the fact is the first thing read rather than a footnote
   // after the paragraph that contradicts it.
   assert.ok(result.text.startsWith("[authoritative fact records"));
-  assert.match(result.text, /chassis code: M2 \(revision 2/);
-  assert.match(result.text, /"F30" is superseded and must not be used/);
+  assert.match(result.text, /chassis code: TC20 \(revision 2/);
+  assert.match(result.text, /"TC10" is superseded and must not be used/);
   // Nothing retrieved is dropped.
   assert.ok(result.text.includes(STALE_PROSE));
 });
 
 test("prose that already agrees is left completely alone", () => {
-  const agreeing = "the car is the operator's 330i, an M2 chassis.";
+  const agreeing = "the car is the operator's 330i, an TC20 chassis.";
   assert.equal(overlayText(CAR, agreeing).changed, false);
   assert.equal(overlayText(CAR, "Unrelated page about OPNsense.").changed, false);
   assert.equal(overlayText(CAR, "").changed, false);
@@ -54,7 +54,7 @@ test("a superseded value must be stated, not merely a substring", () => {
   // what keeps this from firing on every page that contains a number.
   assert.deepEqual(findConflicts(CAR, "The E9 was a different car entirely."), []);
   assert.deepEqual(findConflicts(CAR, "90 degrees."), []);
-  assert.equal(findConflicts(CAR, "an F30 chassis").length, 1);
+  assert.equal(findConflicts(CAR, "an TC10 chassis").length, 1);
 });
 
 test("an empty or malformed overlay changes nothing", () => {
@@ -72,7 +72,7 @@ test("a tool result is rewritten on its first text part, leaving the rest alone"
   assert.equal(applied.result.content[1].text, "second part", "later parts are untouched");
   assert.deepEqual(applied.result.details, { hits: 2 }, "details are untouched");
 
-  assert.equal(overlayToolResult(CAR, { content: [{ type: "text", text: "already M2" }] }), null);
+  assert.equal(overlayToolResult(CAR, { content: [{ type: "text", text: "already TC20" }] }), null);
   assert.equal(overlayToolResult(CAR, { content: "not an array" }), null);
   assert.equal(overlayToolResult(CAR, null), null);
 });
@@ -96,7 +96,7 @@ test("the reader caches, survives a missing overlay, and can be invalidated", as
     },
   });
 
-  assert.equal((await reader.load()).facts["operator.vehicle.car.chassis"].currentValue, "M2");
+  assert.equal((await reader.load()).facts["operator.vehicle.car.chassis"].currentValue, "TC20");
   await reader.load();
   assert.equal(reads, 1, "a second read inside the cache window is served from cache");
 
@@ -213,10 +213,10 @@ test("the middleware closes when config cannot be resolved", async () => {
   );
 });
 
-test("the car acceptance case: M2 beats stale F30 prose before the model sees it", async () => {
+test("the car acceptance case: TC20 beats stale TC10 prose before the model sees it", async () => {
   const { handler } = registeredMiddleware({ ...MW_CFG, factsAgents: ["chat"] });
   // Exactly the retrieval the live vault would return today: the synthesis
-  // still says F30, because materialization was ambiguous and correctly left
+  // still says TC10, because materialization was ambiguous and correctly left
   // the prose alone.
   const event = {
     toolName: "wiki_search",
@@ -226,7 +226,7 @@ test("the car acceptance case: M2 beats stale F30 prose before the model sees it
       content: [
         {
           type: "text",
-          text: "syntheses/2011-bmw-330i-vehicle-record.md\n\nThe car is a 2011 BMW 330i, F30 chassis, N54 engine.",
+          text: "syntheses/2011-bmw-330i-vehicle-record.md\n\nThe car is a 2011 BMW 330i, TC10 chassis, N54 engine.",
         },
       ],
       details: {},
@@ -234,8 +234,8 @@ test("the car acceptance case: M2 beats stale F30 prose before the model sees it
   };
   const out = await handler(event, { runtime: "openclaw", agentId: "chat", sessionKey: "agent:chat:main" });
   const text = out.result.content[0].text;
-  assert.ok(text.indexOf("M2") < text.indexOf("F30 chassis"), "the record must lead the stale prose");
-  assert.match(text, /"F30" is superseded and must not be used/);
+  assert.ok(text.indexOf("TC20") < text.indexOf("TC10 chassis"), "the record must lead the stale prose");
+  assert.match(text, /"TC10" is superseded and must not be used/);
   // The original event object is not mutated in place; the middleware returns a
   // replacement, which is what the runtime forwards to the model.
   assert.equal(event.result.content[0].text.startsWith("syntheses/"), true);

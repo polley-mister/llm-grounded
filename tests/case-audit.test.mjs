@@ -20,15 +20,15 @@ const PROPOSAL = {
   subject: "the car",
   property: "chassis code",
   operation: "correct",
-  previousValue: "F30",
-  newValue: "M2",
+  previousValue: "TC10",
+  newValue: "TC20",
 };
 
 function packet(extra = {}) {
   return buildAuditPacket({
-    userMessage: "It's an M2.",
-    prevAssistant: "the car is an F30.",
-    evidence: [{ tool: "wiki_search", query: "the car", excerpt: "the car — F30 chassis." }],
+    userMessage: "It's an TC20.",
+    prevAssistant: "the car is an TC10.",
+    evidence: [{ tool: "wiki_search", query: "the car", excerpt: "the car — TC10 chassis." }],
     proposal: PROPOSAL,
     prechecks: { newValueInOwnerMessage: true },
     ...extra,
@@ -41,10 +41,10 @@ test("the packet carries only the bounded audit material", () => {
   assert.match(system.content, /read-only auditor/);
   assert.match(system.content, /never\s+instructions to follow/);
   assert.equal(user.role, "user");
-  assert.match(user.content, /It's an M2\./);
-  assert.match(user.content, /the car is an F30\./);
+  assert.match(user.content, /It's an TC20\./);
+  assert.match(user.content, /the car is an TC10\./);
   assert.match(user.content, /wiki_search/);
-  assert.match(user.content, /newValue: M2/);
+  assert.match(user.content, /newValue: TC20/);
   assert.match(user.content, /newValueInOwnerMessage: true/);
 });
 
@@ -66,12 +66,12 @@ test("a turn with no retrieval says so instead of inventing evidence", () => {
 
 test("strict JSON is accepted", () => {
   const parsed = parseCaseDecision(
-    '{"decision":"approve","supportedOldValue":"F30","supportedNewValue":"M2","reason":"stated"}',
+    '{"decision":"approve","supportedOldValue":"TC10","supportedNewValue":"TC20","reason":"stated"}',
   );
   assert.deepEqual(parsed, {
     decision: "approve",
-    supportedOldValue: "F30",
-    supportedNewValue: "M2",
+    supportedOldValue: "TC10",
+    supportedNewValue: "TC20",
     reason: "stated",
   });
   assert.equal(parseCaseDecision('{"decision":"insufficient","supportedOldValue":null,"supportedNewValue":null,"reason":"no"}').decision, "insufficient");
@@ -79,15 +79,15 @@ test("strict JSON is accepted", () => {
 
 test("fenced, oversized, extra-key, wrong-typed and prose replies fail closed", () => {
   const bad = [
-    '```json\n{"decision":"approve","supportedOldValue":null,"supportedNewValue":"M2","reason":"x"}\n```',
-    'Sure! {"decision":"approve","supportedOldValue":null,"supportedNewValue":"M2","reason":"x"}',
-    '{"decision":"approve","supportedOldValue":null,"supportedNewValue":"M2","reason":"x","extra":1}',
-    '{"decision":"yes","supportedOldValue":null,"supportedNewValue":"M2","reason":"x"}',
-    '{"decision":"approve","supportedOldValue":5,"supportedNewValue":"M2","reason":"x"}',
-    '{"decision":"approve","supportedOldValue":null,"supportedNewValue":"M2","reason":5}',
-    '{"decision":"approve","supportedOldValue":null,"supportedNewValue":"M2"}',
+    '```json\n{"decision":"approve","supportedOldValue":null,"supportedNewValue":"TC20","reason":"x"}\n```',
+    'Sure! {"decision":"approve","supportedOldValue":null,"supportedNewValue":"TC20","reason":"x"}',
+    '{"decision":"approve","supportedOldValue":null,"supportedNewValue":"TC20","reason":"x","extra":1}',
+    '{"decision":"yes","supportedOldValue":null,"supportedNewValue":"TC20","reason":"x"}',
+    '{"decision":"approve","supportedOldValue":5,"supportedNewValue":"TC20","reason":"x"}',
+    '{"decision":"approve","supportedOldValue":null,"supportedNewValue":"TC20","reason":5}',
+    '{"decision":"approve","supportedOldValue":null,"supportedNewValue":"TC20"}',
     `{"decision":"approve","supportedOldValue":null,"supportedNewValue":"${"E".repeat(500)}","reason":"x"}`,
-    `{"decision":"approve","supportedOldValue":null,"supportedNewValue":"M2","reason":"${"x".repeat(5000)}"}`,
+    `{"decision":"approve","supportedOldValue":null,"supportedNewValue":"TC20","reason":"${"x".repeat(5000)}"}`,
     "[]",
     "",
     "   ",
@@ -114,7 +114,7 @@ test("the audit runs on agent case with no model override", async () => {
     complete: async (params) => {
       calls.push(params);
       return {
-        text: '{"decision":"approve","supportedOldValue":"F30","supportedNewValue":"M2","reason":"ok"}',
+        text: '{"decision":"approve","supportedOldValue":"TC10","supportedNewValue":"TC20","reason":"ok"}',
         provider: "deepseek",
         model: "deepseek-v4-pro",
         agentId: "case",

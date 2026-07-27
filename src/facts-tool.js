@@ -86,7 +86,7 @@ function failure(code, message, extra = {}) {
  * Whether `haystack` actually states `value`.
  *
  * Delegates to token-sequence matching. The previous substring implementation
- * accepted `"2"` as evidence of `"M2"`, which is exactly the class of
+ * accepted `"2"` as evidence of `"TC20"`, which is exactly the class of
  * fabrication these prechecks exist to stop.
  */
 export function containsValue(haystack, needle) {

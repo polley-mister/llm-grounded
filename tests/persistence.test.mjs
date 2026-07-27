@@ -84,24 +84,24 @@ test("an ordinary turn is not a fact turn", () => {
 // ---------------------------------------------------------------------------
 
 test("the corrected fact is used in the accepted response", () => {
-  const answer = "Correct. E92, not E90.";
+  const answer = "Correct. RX60, not RX40.";
   const { text, refused } = composeWithNote(answer, persistenceNote());
   assert.equal(refused, false);
-  assert.match(text, /E92/);
-  assert.match(text, /not E90/);
+  assert.match(text, /RX60/);
+  assert.match(text, /not RX40/);
 });
 
 test("a substantive answer survives the failure intact", () => {
   // The whole point: a persistence failure must not discard reasoning the
   // operator asked for.
-  const answer = "You're right, it's an E92. That means two exterior belt mouldings, one per door.";
+  const answer = "You're right, it's an RX60. That means two exterior belt mouldings, one per door.";
   const { text } = composeWithNote(answer, persistenceNote());
   assert.match(text, /two exterior belt mouldings/);
   assert.match(text, /failed/i);
 });
 
 test("the response does not say saved, stored, remembered or updated", () => {
-  const { text } = composeWithNote("Correct. E92, not E90.", persistenceNote());
+  const { text } = composeWithNote("Correct. RX60, not RX40.", persistenceNote());
   assert.equal(claimsPersistence(text), false, text);
   for (const word of ["saved", "stored", "remembered", "updated"]) {
     // The note's own negated forms are allowed to contain these stems; a bare
@@ -121,7 +121,7 @@ test("a draft that already claims the write succeeded is refused, not rewritten"
   // Annotating "I've saved that" with "the update failed" ships a
   // self-contradiction. Rewriting it is the surface where a renderer starts
   // altering meaning, so this goes back through the revision budget instead.
-  const { refused } = composeWithNote("Got it, I've saved that: E92.", persistenceNote());
+  const { refused } = composeWithNote("Got it, I've saved that: RX60.", persistenceNote());
   assert.equal(refused, true);
 });
 
@@ -136,7 +136,7 @@ test("claimsPersistence catches the phrasings that matter", () => {
     assert.equal(claimsPersistence(s), true, s);
   }
   for (const s of [
-    "Correct. E92, not E90.",
+    "Correct. RX60, not RX40.",
     "I could not store that.",
     "The vault update failed, so I have not stored that correction.",
     "That didn't save.",
@@ -162,32 +162,32 @@ test("a held correction corrects a later retrieval in the same session", () => {
     factKey: "vehicle.model",
     subject: "the car",
     property: "model",
-    currentValue: "E92",
-    supersededValues: ["E90"],
+    currentValue: "RX60",
+    supersededValues: ["RX40"],
   });
   assert.equal(overlay.active("s1"), true);
 
   // A retrieval that still returns the stale value, as the vault legitimately will.
   const merged = mergeOverlays({ facts: {} }, overlay.snapshot("s1"));
-  const out = overlayText(merged, "Your stored E90 has four exterior mouldings.");
+  const out = overlayText(merged, "Your stored RX40 has four exterior mouldings.");
   assert.equal(out.changed, true);
-  assert.match(out.text, /E92/);
+  assert.match(out.text, /RX60/);
   assert.match(out.text, /superseded/);
 });
 
 test("the session overlay wins over a stale durable record", () => {
   const durable = {
-    facts: { "vehicle.model": { subject: "the car", property: "model", currentValue: "E90", supersededValues: [], revision: 3 } },
+    facts: { "vehicle.model": { subject: "the car", property: "model", currentValue: "RX40", supersededValues: [], revision: 3 } },
   };
   const overlay = createSessionOverlay();
-  overlay.hold({ sessionKey: "s1", factKey: "vehicle.model", currentValue: "E92", supersededValues: ["E90"] });
+  overlay.hold({ sessionKey: "s1", factKey: "vehicle.model", currentValue: "RX60", supersededValues: ["RX40"] });
   const merged = mergeOverlays(durable, overlay.snapshot("s1"));
-  assert.equal(merged.facts["vehicle.model"].currentValue, "E92");
+  assert.equal(merged.facts["vehicle.model"].currentValue, "RX60");
 });
 
 test("a later successful commit releases the overlay", () => {
   const overlay = createSessionOverlay();
-  overlay.hold({ sessionKey: "s1", factKey: "vehicle.model", currentValue: "E92" });
+  overlay.hold({ sessionKey: "s1", factKey: "vehicle.model", currentValue: "RX60" });
   assert.equal(overlay.active("s1"), true);
   assert.equal(overlay.release({ sessionKey: "s1", factKey: "vehicle.model" }), true);
   assert.equal(overlay.active("s1"), false);
@@ -195,7 +195,7 @@ test("a later successful commit releases the overlay", () => {
 
 test("one session cannot read another's corrections", () => {
   const overlay = createSessionOverlay();
-  overlay.hold({ sessionKey: "s1", factKey: "vehicle.model", currentValue: "E92" });
+  overlay.hold({ sessionKey: "s1", factKey: "vehicle.model", currentValue: "RX60" });
   assert.equal(overlay.active("s2"), false);
   assert.deepEqual(overlay.snapshot("s2"), { facts: {} });
 });

@@ -1,10 +1,10 @@
 // Value equivalence and containment for fact transactions.
 //
 // The first version of this used plain substring containment, which is wrong in
-// a way that matters: `"2"` is a substring of `"M2"`, so a model could propose
-// the new value `2`, have it "found" in the operator's message about an M2, and get
+// a way that matters: `"2"` is a substring of `"TC20"`, so a model could propose
+// the new value `2`, have it "found" in the operator's message about an TC20, and get
 // it committed. Substring matching also fails the other way — it would accept
-// `"E9"` or `"92"` as evidence of `"M2"`.
+// `"E9"` or `"92"` as evidence of `"TC20"`.
 //
 // The replacement is token-sequence matching over a normalized form. Case,
 // punctuation, quote style, and whitespace runs are all equivalence-preserving;
@@ -28,8 +28,8 @@ const MAX_NORMALIZE_CHARS = 4000;
  * Normalize for comparison: fold case, unify quotes and dashes, and reduce
  * every run of non-alphanumeric characters to a single space.
  *
- * Alphanumeric runs are preserved intact, so `M2` normalizes to `m2` and
- * never splits into `e` and `92`. That is what makes `2` fail against `M2`.
+ * Alphanumeric runs are preserved intact, so `TC20` normalizes to `tc20` and
+ * never splits into `e` and `92`. That is what makes `2` fail against `TC20`.
  */
 export function normalizeForMatch(value) {
   const raw = String(value ?? "").slice(0, MAX_NORMALIZE_CHARS);

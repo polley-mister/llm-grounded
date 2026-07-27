@@ -108,19 +108,19 @@ test("a mutated turn is marked as mutated and final is the lane's text", async (
   const p = plugin();
   const ctx = contexts();
   await p.handlers.before_prompt_build(
-    { prompt: "[user-message:abc123]\nIt's an M2.\n[/user-message:abc123]",
-      messages: [{ role: "assistant", content: [{ type: "text", text: "the car is an F30." }] }] }, ctx,
+    { prompt: "[user-message:abc123]\nIt's an TC20.\n[/user-message:abc123]",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "the car is an TC10." }] }] }, ctx,
   );
   p.handlers.after_tool_call(
-    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "F30." }] } }, ctx,
+    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "TC10." }] } }, ctx,
   );
   const entry = p.__store.get({ runId: "run-1" });
   entry.factCalls = 1;
   entry.factOutcome = { ok: false, code: "concurrent-write" };
-  entry.factProposal = { operation: "correct", subject: "CAR", property: "chassis code", newValue: "M2", previousValue: "F30" };
+  entry.factProposal = { operation: "correct", subject: "CAR", property: "chassis code", newValue: "TC20", previousValue: "TC10" };
 
-  await p.handlers.before_agent_finalize({ ...FINALIZE, lastAssistantMessage: "Correct. M2, not F30." }, ctx);
-  const shipped = p.handlers.message_sending({ content: "Correct. M2, not F30." }, ctx).content;
+  await p.handlers.before_agent_finalize({ ...FINALIZE, lastAssistantMessage: "Correct. TC20, not TC10." }, ctx);
+  const shipped = p.handlers.message_sending({ content: "Correct. TC20, not TC10." }, ctx).content;
 
   await p.handlers.agent_end({ runId: "run-1", sessionId: "sess-1" }, ctx);
   const r = p.__turns[0];
@@ -195,8 +195,8 @@ test("a byte-identical substitution is not a mutation", () => {
   assert.equal(same.textMutatedByPlugin, false);
 
   const changed = selectTerminalObservation(
-    [{ lane: "message", text: "Correct. M2. The vault update failed.", external: true }],
-    { action: "annotate", originalDraft: "Correct. M2." },
+    [{ lane: "message", text: "Correct. TC20. The vault update failed.", external: true }],
+    { action: "annotate", originalDraft: "Correct. TC20." },
   );
   assert.equal(changed.textMutatedByPlugin, true);
 });

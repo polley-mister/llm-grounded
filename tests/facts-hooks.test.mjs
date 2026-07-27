@@ -37,10 +37,10 @@ function plugin() {
 }
 
 const CORRECTION_TURN = {
-  prompt: "[user-message:abc123]\nIt's an M2.\n[/user-message:abc123]",
+  prompt: "[user-message:abc123]\nIt's an TC20.\n[/user-message:abc123]",
   messages: [
     { role: "user", content: "What is the car?" },
-    { role: "assistant", content: [{ type: "text", text: "the car is your 330i — an F30 chassis." }] },
+    { role: "assistant", content: [{ type: "text", text: "the car is your 330i — an TC10 chassis." }] },
   ],
 };
 
@@ -49,8 +49,8 @@ test("the turn's exact text, prior answer and fact verdict are captured once", a
   const ctx = contexts();
   await p.handlers.before_prompt_build(CORRECTION_TURN, ctx);
   const entry = p.__store.get({ runId: "run-1" });
-  assert.equal(entry.userMessage, "It's an M2.");
-  assert.equal(entry.prevAssistant, "the car is your 330i — an F30 chassis.");
+  assert.equal(entry.userMessage, "It's an TC20.");
+  assert.equal(entry.prevAssistant, "the car is your 330i — an TC10 chassis.");
   assert.equal(entry.factEligible, true);
   assert.equal(entry.factKind, "correct");
 
@@ -80,7 +80,7 @@ test("the fact rule is injected only for agents that have the tool", async () =>
 test("native OpenClaw gets the compact the agent register reminder, while the console keeps its own coda", async () => {
   const p = plugin();
   const native = await p.handlers.before_prompt_build(
-    { ...CORRECTION_TURN, prompt: "It's an M2." },
+    { ...CORRECTION_TURN, prompt: "It's an TC20." },
     contexts(),
   );
   assert.match(native.appendContext, /Reply as the agent, in the voice SOUL\.md defines/);
@@ -157,7 +157,7 @@ test("only successful wiki retrievals become bound evidence", async () => {
   const ctx = contexts();
 
   p.handlers.after_tool_call(
-    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — F30 chassis." }] } },
+    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — TC10 chassis." }] } },
     ctx,
   );
   p.handlers.after_tool_call(
@@ -172,7 +172,7 @@ test("only successful wiki retrievals become bound evidence", async () => {
   const evidence = p.__store.get({ runId: "run-1" }).wikiEvidence;
   assert.equal(evidence.length, 1, "only the successful wiki retrieval is evidence");
   assert.equal(evidence[0].tool, "wiki_search");
-  assert.match(evidence[0].excerpt, /F30 chassis/);
+  assert.match(evidence[0].excerpt, /TC10 chassis/);
 });
 
 test("evidence excerpts are bounded", async () => {
@@ -198,10 +198,10 @@ test("an unambiguous uncaptured fact turn gets one transaction nudge, then ships
   // of the fact nudge. The prior answer is personal, so this correction routes
   // to the memory tier and wiki_search is what clears it.
   p.handlers.after_tool_call(
-    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — F30." }] } },
+    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — TC10." }] } },
     ctx,
   );
-  const event = { runId: "run-1", sessionId: "sess-1", stopHookActive: false, lastAssistantMessage: "It's an M2, noted." };
+  const event = { runId: "run-1", sessionId: "sess-1", stopHookActive: false, lastAssistantMessage: "It's an TC20, noted." };
 
   const first = await p.handlers.before_agent_finalize(event, ctx);
   assert.equal(first.action, "revise");
@@ -213,7 +213,7 @@ test("an unambiguous uncaptured fact turn gets one transaction nudge, then ships
   const second = await p.handlers.before_agent_finalize(event, ctx);
   assert.equal(second, undefined, "the transaction nudge is not repeated");
   const delivered = p.handlers.message_sending({}, ctx);
-  assert.match(delivered.content, /It.s an M2/);
+  assert.match(delivered.content, /It.s an TC20/);
   assert.match(delivered.content, /have not stored/i);
 });
 
@@ -236,7 +236,7 @@ test("no nudge for an agent without the tool, however eligible the turn", async 
   const ctx = contexts({ pluginConfig: { ...FACTS_CONFIG, factsEnabled: false } });
   await p.handlers.before_prompt_build(CORRECTION_TURN, ctx);
   p.handlers.after_tool_call(
-    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — F30." }] } },
+    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — TC10." }] } },
     ctx,
   );
   const result = await p.handlers.before_agent_finalize(
@@ -370,7 +370,7 @@ test("direct, the console and one-shot sessions are exposed", () => {
 /** Ground the turn so the grounding gate is satisfied and out of the way. */
 function ground(p, ctx) {
   p.handlers.after_tool_call(
-    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — F30." }] } },
+    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — TC10." }] } },
     ctx,
   );
 }
@@ -379,7 +379,7 @@ const FINALIZE = {
   runId: "run-1",
   sessionId: "sess-1",
   stopHookActive: false,
-  lastAssistantMessage: "Got it — the car is an M2. Noted.",
+  lastAssistantMessage: "Got it — the car is an TC20. Noted.",
 };
 
 async function settle(p, ctx, { outcome, calls = 0 } = {}) {
@@ -410,7 +410,7 @@ test("a failed transaction ships the answer with a persistence note", async () =
     assert.equal(finalize, undefined, `${outcome.code}: no revision is owed`);
 
     const delivered = p.handlers.message_sending({}, ctx);
-    assert.match(delivered.content, /the car is an M2/, outcome.code);
+    assert.match(delivered.content, /the car is an TC20/, outcome.code);
     assert.match(delivered.content, /failed/i, outcome.code);
     assert.notEqual(delivered.content, FACT_FAIL_CLOSED_TEXT, outcome.code);
     assert.equal(delivered.metadata.llmGrounded.persistenceOutcome, "failed");
@@ -432,7 +432,7 @@ test("a turn that never called the tool is nudged once, then annotated", async (
   const second = await p.handlers.before_agent_finalize(FINALIZE, ctx);
   assert.equal(second, undefined);
   const delivered = p.handlers.message_sending({}, ctx);
-  assert.match(delivered.content, /the car is an M2/);
+  assert.match(delivered.content, /the car is an TC20/);
   assert.match(delivered.content, /have not stored/i);
   assert.notEqual(delivered.content, FACT_FAIL_CLOSED_TEXT);
 });
@@ -476,7 +476,7 @@ test("the payload path carries the annotated answer and keeps its rich content",
   );
   // An annotated answer is a real answer, so its media survives. Stripping is
   // for a reply that was withheld, not one that was disclosed.
-  assert.match(first.payload.text, /the car is an M2/);
+  assert.match(first.payload.text, /the car is an TC20/);
   assert.match(first.payload.text, /failed/i);
   assert.equal(first.payload.mediaUrl, "http://x/y.png");
   assert.equal(first.payload.presentation, "card");
@@ -562,7 +562,7 @@ test("correction scope decides what a correction may write", async () => {
   const { resolveCorrection } = await import("../src/corrections.js");
 
   // User-owned: their say-so is the evidence, no tool required, commit allowed.
-  const owned = resolveCorrection("It's an M2.", "the car is your 330i, an F30 chassis.");
+  const owned = resolveCorrection("It's an TC20.", "the car is your 330i, an TC10 chassis.");
   assert.equal(owned.correctionScope, "user_owned_fact");
   assert.equal(owned.evidenceSource, "current_user_assertion");
   assert.equal(owned.requiredTool, null);

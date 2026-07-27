@@ -2,8 +2,8 @@
  * Normalize for comparison: fold case, unify quotes and dashes, and reduce
  * every run of non-alphanumeric characters to a single space.
  *
- * Alphanumeric runs are preserved intact, so `M2` normalizes to `m2` and
- * never splits into `e` and `92`. That is what makes `2` fail against `M2`.
+ * Alphanumeric runs are preserved intact, so `TC20` normalizes to `tc20` and
+ * never splits into `e` and `92`. That is what makes `2` fail against `TC20`.
  */
 export declare function normalizeForMatch(value: any): string;
 /** Normalized token sequence. Empty input yields an empty array. */

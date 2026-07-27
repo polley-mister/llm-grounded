@@ -104,7 +104,7 @@ test("the fact block records codes and counts, never fact content", () => {
   ]);
   assert.equal(record.fact.outcome.caseModel, "deepseek-v4-pro");
   const serialized = JSON.stringify(record);
-  assert.doesNotMatch(serialized, /M2|revision 2 committed/, "no fact values or prose");
+  assert.doesNotMatch(serialized, /TC20|revision 2 committed/, "no fact values or prose");
 });
 
 test("the per-turn nonce reaches the evidence record", () => {

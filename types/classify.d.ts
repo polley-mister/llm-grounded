@@ -77,7 +77,7 @@ export declare function extractTurnNonce(prompt: string): string | null;
 /**
  * The most recent assistant text in a run's prepared session messages.
  *
- * This is the claim a contextual correction is correcting — "It's an M2."
+ * This is the claim a contextual correction is correcting — "It's an TC20."
  * means nothing without it. Assistant content arrives as an array of typed
  * parts; a bare string is accepted too, because not every harness normalizes.
  * Anything unreadable yields "", which makes a correction ineligible rather

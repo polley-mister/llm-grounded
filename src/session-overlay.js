@@ -4,10 +4,10 @@
 // It reads the vault index, which only a successful transaction writes. So when
 // a commit fails, that overlay holds nothing, and this happens:
 //
-//   operator: It's an E92.
-//   agent:    Correct. E92, not E90. The vault update failed…
+//   operator: It's an RX60.
+//   agent:    Correct. RX60, not RX40. The vault update failed…
 //   operator: How many exterior mouldings does my car have?
-//   agent:    Your stored E90 has four…
+//   agent:    Your stored RX40 has four…
 //
 // The durable record is allowed to stay stale. The conversation is not allowed
 // to forget what the operator just established. This module holds accepted

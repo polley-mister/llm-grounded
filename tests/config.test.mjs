@@ -81,7 +81,7 @@ test("ordinary English is not mistaken for installation vocabulary", () => {
     // "endurance" is deliberately absent. It was in the inherited token set,
     // but as a standalone word it fires on "endurance training" and "endurance
     // race". If it names something here, it has to be configured as a phrase.
-    "opnsense", "mikrotik", "truenas", "proxmox", "335ix", "e90",
+    "opnsense", "mikrotik", "truenas", "proxmox", "tc10-touring", "rx40",
     "mission control", "market research", "vault tools", "recursivemas",
   ]);
   configureAgentNames(["atlas", "kipp", "mercer", "case"]);

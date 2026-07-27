@@ -28,13 +28,13 @@ const PROPOSAL = {
   subject: "the car",
   property: "chassis code",
   operation: "correct",
-  previousValue: "F30",
-  newValue: "M2",
+  previousValue: "TC10",
+  newValue: "TC20",
 };
 
 const APPROVED = {
   ok: true,
-  decision: { decision: "approve", supportedOldValue: "F30", supportedNewValue: "M2", reason: "stated" },
+  decision: { decision: "approve", supportedOldValue: "TC10", supportedNewValue: "TC20", reason: "stated" },
   attribution: { provider: "deepseek", model: "deepseek-v4-pro", agentId: "case" },
 };
 
@@ -48,8 +48,8 @@ function scenario(overrides = {}) {
     correction: true,
     reason: "correction-personal",
     turnNonce: "abc123",
-    userMessage: "It's an M2.",
-    prevAssistant: "Sam, your car is a 330i — an F30 chassis.",
+    userMessage: "It's an TC20.",
+    prevAssistant: "Sam, your car is a 330i — an TC10 chassis.",
     fact: { eligible: true, kind: "correct", reason: "contextual-correction", unambiguous: true },
     ...overrides.begin,
   });
@@ -181,11 +181,11 @@ test("proposal validation is structural and strict", () => {
     [{ ...PROPOSAL, factKey: "nodots" }, "invalid-fact-key"],
     [{ ...PROPOSAL, subject: "" }, "invalid-request"],
     [{ ...PROPOSAL, operation: "delete" }, "invalid-request"],
-    [{ ...PROPOSAL, newValue: "M2\nrm -rf /" }, "invalid-request"],
+    [{ ...PROPOSAL, newValue: "TC20\nrm -rf /" }, "invalid-request"],
     [{ ...PROPOSAL, newValue: "x".repeat(500) }, "invalid-request"],
     [{ ...PROPOSAL, previousValue: "" }, "invalid-request"],
-    [{ ...PROPOSAL, previousValue: "M2" }, "no-op"],
-    [{ ...PROPOSAL, operation: "create", previousValue: "F30" }, "invalid-request"],
+    [{ ...PROPOSAL, previousValue: "TC20" }, "no-op"],
+    [{ ...PROPOSAL, operation: "create", previousValue: "TC10" }, "invalid-request"],
     [{ ...PROPOSAL, targetPage: "/etc/passwd" }, "invalid-target"],
     [{ ...PROPOSAL, targetPage: "syntheses/../../etc/x.md" }, "invalid-target"],
     [{ ...PROPOSAL, targetPage: "Journal/private.md" }, "invalid-target"],
@@ -230,7 +230,7 @@ test("an early call may retrieve evidence and retry without spending a second tr
     sessionKey: "sess-1",
     toolName: "wiki_search",
     params: { query: "the car chassis" },
-    result: { content: [{ type: "text", text: "the car is listed as F30 chassis." }] },
+    result: { content: [{ type: "text", text: "the car is listed as TC10 chassis." }] },
   });
   store.bindToolCall({ toolCallId: "call-2", runId: "run-1", sessionKey: "sess-1" });
   const second = await run(store, {}, PROPOSAL, "call-2");
@@ -242,9 +242,9 @@ test("an early call may retrieve evidence and retry without spending a second tr
 
 test("this turn's own vault evidence can supply the old value", () => {
   const entry = {
-    userMessage: "It's an M2.",
+    userMessage: "It's an TC20.",
     prevAssistant: "I do not have that on file.",
-    wikiEvidence: [{ tool: "wiki_search", excerpt: "the car — chassis F30, N54." }],
+    wikiEvidence: [{ tool: "wiki_search", excerpt: "the car — chassis TC10, N54." }],
   };
   const checks = runPrechecks(PROPOSAL, entry);
   assert.equal(checks.ok, true);
@@ -253,10 +253,10 @@ test("this turn's own vault evidence can supply the old value", () => {
 });
 
 test("value containment ignores case and curly quotes but not substance", () => {
-  assert.equal(containsValue("It's an M2.", "M2"), true);
+  assert.equal(containsValue("It's an TC20.", "TC20"), true);
   assert.equal(containsValue("It’s a MikroTik CCR2004.", "mikrotik ccr2004"), true);
-  assert.equal(containsValue("It's an M2.", "E46"), false);
-  assert.equal(containsValue("It's an M2.", ""), false);
+  assert.equal(containsValue("It's an TC20.", "E46"), false);
+  assert.equal(containsValue("It's an TC20.", ""), false);
 });
 
 // --------------------------------------------------------------------------
@@ -298,7 +298,7 @@ test("provenance and the quotation are bound, never taken from the model", async
   });
   assert.equal(details.ok, true);
   const request = commits[0].request;
-  assert.equal(request.sourceQuote, "It's an M2.");
+  assert.equal(request.sourceQuote, "It's an TC20.");
   assert.equal(request.runId, "run-1");
   assert.equal(request.sessionId, "sess-1");
   assert.equal(request.agentId, "chat");
@@ -354,12 +354,12 @@ test("a successful commit records the outcome on the turn for the evidence artif
 test("an approval that names different values is not consent to this change", async () => {
   const cases = [
     // Approves, but for a value nobody proposed.
-    { supportedNewValue: "E46", supportedOldValue: "F30" },
+    { supportedNewValue: "E46", supportedOldValue: "TC10" },
     // Approves the new value against the wrong old one.
-    { supportedNewValue: "M2", supportedOldValue: "E36" },
+    { supportedNewValue: "TC20", supportedOldValue: "E36" },
     // Approves while naming nothing at all.
     { supportedNewValue: null, supportedOldValue: null },
-    { supportedNewValue: "M2", supportedOldValue: null },
+    { supportedNewValue: "TC20", supportedOldValue: null },
   ];
   for (const decision of cases) {
     const { details, commits } = await run(scenario(), {
@@ -383,7 +383,7 @@ test("an approval bound to the proposal commits, allowing only normalization", a
       audit: {
         ok: true,
         // Case and punctuation differences are the only permitted drift.
-        decision: { decision: "approve", supportedOldValue: "F30", supportedNewValue: "M2.", reason: "ok" },
+        decision: { decision: "approve", supportedOldValue: "TC10", supportedNewValue: "TC20.", reason: "ok" },
         attribution: { model: "deepseek-v4-pro", agentId: "case" },
       },
     },
@@ -393,7 +393,7 @@ test("an approval bound to the proposal commits, allowing only normalization", a
 });
 
 test("a substring of a stated value is not a stated value", async () => {
-  // "2" is a substring of "M2"; the old substring check let it through.
+  // "2" is a substring of "TC20"; the old substring check let it through.
   const { details, audits } = await run(scenario(), {}, { ...PROPOSAL, newValue: "2" });
   assert.equal(details.code, "new-value-not-stated");
   assert.equal(audits.length, 0);
@@ -417,7 +417,7 @@ test("a source message carrying a credential is refused whole", async () => {
   const { details, audits, commits } = await run(store, {}, {
     ...PROPOSAL,
     operation: "correct",
-    previousValue: "F30",
+    previousValue: "TC10",
     newValue: "CCR2004",
   });
   // The proposed value is benign; the message it would be quoted from is not.
@@ -515,7 +515,7 @@ test("canonical explicit operator session executes without operator.admin", asyn
 test("the revision this decision was made against is bound to the write", async () => {
   const overlay = {
     load: async () => ({
-      facts: { "operator.vehicle.car.chassis": { currentValue: "F30", revision: 7 } },
+      facts: { "operator.vehicle.car.chassis": { currentValue: "TC10", revision: 7 } },
     }),
     invalidate() {},
   };
@@ -542,7 +542,7 @@ test("an unknown or unreadable overlay simply omits the hint", async () => {
 test("a stale revision is reported through the plugin path", async () => {
   const overlay = {
     load: async () => ({
-      facts: { "operator.vehicle.car.chassis": { currentValue: "F30", revision: 1 } },
+      facts: { "operator.vehicle.car.chassis": { currentValue: "TC10", revision: 1 } },
     }),
     invalidate() {},
   };

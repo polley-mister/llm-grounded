@@ -10,14 +10,14 @@ import { detectFactStatement, isMostlyQuotation } from "../src/facts-detect.js";
 
 import "./_vocabulary.mjs";
 
-const CAR_ANSWER = "the car is your 2011 BMW 330i — an F30 chassis.";
+const CAR_ANSWER = "the car is your 2011 BMW 330i — an TC10 chassis.";
 
 function detect(message, prev = CAR_ANSWER) {
   return detectFactStatement(message, prev);
 }
 
 test("the acceptance case: a bare contextual correction is recognized", () => {
-  const result = detect("It's an M2.");
+  const result = detect("It's an TC20.");
   assert.equal(result.eligible, true);
   assert.equal(result.kind, "correct");
   assert.equal(result.reason, "contextual-correction");
@@ -25,22 +25,22 @@ test("the acceptance case: a bare contextual correction is recognized", () => {
 });
 
 test("transport framing and vocatives do not hide a correction", () => {
-  assert.equal(detect("[Fri 2026-07-24 18:46 PDT] Hey Atlas, it's an M2.").kind, "correct");
+  assert.equal(detect("[Fri 2026-07-24 18:46 PDT] Hey Atlas, it's an TC20.").kind, "correct");
 });
 
 test("a correction with no preceding answer has nothing to correct", () => {
-  const result = detectFactStatement("It's an M2.", "");
+  const result = detectFactStatement("It's an TC20.", "");
   assert.equal(result.eligible, false);
   assert.equal(result.reason, "correction-without-prior-answer");
 });
 
 test("explicit rejections and negated assertions are corrections", () => {
   for (const message of [
-    "No, that's wrong — it's an M2.",
-    "Actually, it is an M2.",
+    "No, that's wrong — it's an TC20.",
+    "Actually, it is an TC20.",
     "You got that wrong.",
-    "the car was never an F30.",
-    "the car's chassis is M2, not F30.",
+    "the car was never an TC10.",
+    "the car's chassis is TC20, not TC10.",
   ]) {
     const result = detect(message);
     assert.equal(result.eligible, true, message);
@@ -49,7 +49,7 @@ test("explicit rejections and negated assertions are corrections", () => {
 });
 
 test("a self-contained old/new correction can bind to vault evidence without a preceding answer", () => {
-  const result = detectFactStatement("the car's chassis is M2, not F30.", "");
+  const result = detectFactStatement("the car's chassis is TC20, not TC10.", "");
   assert.equal(result.eligible, true);
   assert.equal(result.kind, "correct");
   assert.equal(result.reason, "negated-correction");
@@ -71,7 +71,7 @@ test("first-person durable statements create a fact", () => {
 test("questions never produce a transaction", () => {
   for (const message of [
     "What chassis is the car?",
-    "Is the car an M2?",
+    "Is the car an TC20?",
     "Do you remember my router?",
     "Tell me about my homelab.",
     "remind me what the car is",
@@ -82,17 +82,17 @@ test("questions never produce a transaction", () => {
 
 test("uncertainty, hypotheticals, jokes, quotations and third parties are excluded", () => {
   const cases = {
-    "I think it's an M2.": "uncertain",
-    "I'm not sure, maybe an M2.": "uncertain",
-    "If it were an M2 I'd have the N54.": "hypothetical",
-    "Imagine my car is an M2.": "hypothetical",
-    "It's an M2, lol jk.": "joke",
-    '"the car is an M2 with the N54."': "quotation",
+    "I think it's an TC20.": "uncertain",
+    "I'm not sure, maybe an TC20.": "uncertain",
+    "If it were an TC20 I'd have the N54.": "hypothetical",
+    "Imagine my car is an TC20.": "hypothetical",
+    "It's an TC20, lol jk.": "joke",
+    '"the car is an TC20 with the N54."': "quotation",
     // Quoted *and* attributed. Either exclusion alone would be enough.
-    '"It\'s an M2" is what the forum said.': "third-party",
-    "He said it's an M2.": "third-party",
-    "According to the VIN decoder it's an M2.": "third-party",
-    "My friend told me it's an M2.": "third-party",
+    '"It\'s an TC20" is what the forum said.': "third-party",
+    "He said it's an TC20.": "third-party",
+    "According to the VIN decoder it's an TC20.": "third-party",
+    "My friend told me it's an TC20.": "third-party",
   };
   for (const [message, reason] of Object.entries(cases)) {
     const result = detect(message);
@@ -103,7 +103,7 @@ test("uncertainty, hypotheticals, jokes, quotations and third parties are exclud
 
 test("opinions and instructions are not durable facts", () => {
   assert.equal(detect("That's a great car.").eligible, false);
-  assert.equal(detect("Remember that it's an M2.").reason, "instruction");
+  assert.equal(detect("Remember that it's an TC20.").reason, "instruction");
   assert.equal(detect("Please update the vault.").reason, "instruction");
   assert.equal(detect("Don't record that.").reason, "instruction");
 });

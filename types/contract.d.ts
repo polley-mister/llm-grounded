@@ -54,7 +54,7 @@ export declare function factRevisionInstruction(kind: any): string;
  *
  * An eligible turn is one where the operator stated or corrected a durable fact. If
  * the transaction did not commit, a normal-sounding acknowledgement is a lie
- * about the state of record — "got it, the car is an M2" when nothing was
+ * about the state of record — "got it, the car is an TC20" when nothing was
  * written is worse than saying nothing, because he will believe it is stored.
  * Never reword: acceptance asserts it verbatim.
  */

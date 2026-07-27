@@ -1,6 +1,6 @@
 /**
  * A fact value looks like a value: a digit, or a capitalized token that is not
- * merely the first word of the sentence. "an M2" qualifies; "a great car" does
+ * merely the first word of the sentence. "an TC20" qualifies; "a great car" does
  * not. Deterministic, cheap, and biased toward refusing.
  */
 export declare function hasValueToken(text: any): boolean;

@@ -27,12 +27,12 @@ const PROPOSAL = {
   operation: "correct",
   subject: "CAR",
   property: "chassis code",
-  newValue: "E92",
-  previousValue: "E90",
+  newValue: "RX60",
+  previousValue: "RX40",
 };
 
-const CLEAN_DRAFT = "Correct. E92, not E90.";
-const CLAIMING_DRAFT = "Got it, I've saved that: E92.";
+const CLEAN_DRAFT = "Correct. RX60, not RX40.";
+const CLAIMING_DRAFT = "Got it, I've saved that: RX60.";
 
 test("an ordinary turn passes through untouched", () => {
   const d = resolveDelivery({ entry: { factEligible: false }, draft: "Ha. I'll take it." });
@@ -63,15 +63,15 @@ test("grounding fail-closed outranks a persistence failure", () => {
 test("a clean draft is annotated, keeping the answer", () => {
   const d = resolveDelivery({ entry: FAILED, draft: CLEAN_DRAFT });
   assert.equal(d.action, "annotate");
-  assert.match(d.text, /E92/);
-  assert.match(d.text, /not E90/);
+  assert.match(d.text, /RX60/);
+  assert.match(d.text, /not RX40/);
   assert.match(d.text, /failed/i);
   assert.equal(d.persistenceFailureNoted, true);
   assert.equal(d.correctionAppliedToResponse, true);
 });
 
 test("a substantive answer survives annotation intact", () => {
-  const draft = "You're right, it's an E92. That means two exterior belt mouldings, one per door.";
+  const draft = "You're right, it's an RX60. That means two exterior belt mouldings, one per door.";
   const d = resolveDelivery({ entry: FAILED, draft });
   assert.equal(d.action, "annotate");
   assert.match(d.text, /two exterior belt mouldings/);
@@ -102,7 +102,7 @@ test("a still-claiming draft after the budget is rebuilt, not annotated", () => 
     overlayActive: true,
   });
   assert.equal(d.action, "safe_fallback");
-  assert.equal(d.text, "Correct. E92, not E90. The durable record update failed; the correction remains active for this conversation only.");
+  assert.equal(d.text, "Correct. RX60, not RX40. The durable record update failed; the correction remains active for this conversation only.");
   assert.doesNotMatch(d.text, /saved/i, "the contradictory draft must not survive");
   assert.equal(d.persistenceFailureNoted, true);
 });
@@ -111,10 +111,10 @@ test("the fallback for a plain statement states the record rather than inventing
   const d = resolveDelivery({
     entry: { ...FAILED, factKind: "state", persistenceClaimRevisions: 1 },
     draft: "I've stored that.",
-    structuredFact: { operation: "set", subject: "CAR", property: "chassis code", newValue: "E92" },
+    structuredFact: { operation: "set", subject: "CAR", property: "chassis code", newValue: "RX60" },
   });
   assert.equal(d.action, "safe_fallback");
-  assert.match(d.text, /^Understood: CAR chassis code is E92\./);
+  assert.match(d.text, /^Understood: CAR chassis code is RX60\./);
   // The note legitimately contains "not stored that correction"; what must be
   // gone is the draft asserting the write happened.
   assert.equal(claimsPersistence(d.text), false);

@@ -2,7 +2,7 @@
 //
 // Writing the record was never the hard part. The hard part is that
 // `wiki_search` and `wiki_get` rank and return whatever the vault says, and a
-// stale synthesis paragraph — "the car is an F30 sedan" — reads exactly as
+// stale synthesis paragraph — "the car is an TC10 sedan" — reads exactly as
 // authoritative to the model as the fact record does. When materialization is
 // unsafe the prose is deliberately left alone, so the conflict is not an edge
 // case: it is the designed steady state of `needsRematerialization`.

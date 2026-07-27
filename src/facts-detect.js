@@ -81,7 +81,7 @@ const EVALUATIVE = [
 
 /**
  * A fact value looks like a value: a digit, or a capitalized token that is not
- * merely the first word of the sentence. "an M2" qualifies; "a great car" does
+ * merely the first word of the sentence. "an TC20" qualifies; "a great car" does
  * not. Deterministic, cheap, and biased toward refusing.
  */
 export function hasValueToken(text) {
@@ -125,7 +125,7 @@ const DURABLE_FIRST_PERSON = [
 
 /**
  * Contextual corrections: a short declarative whose subject is a pronoun
- * pointing back at what the assistant just said. "It's an M2." is the whole
+ * pointing back at what the assistant just said. "It's an TC20." is the whole
  * acceptance case — it contains no correction vocabulary at all, and is only a
  * correction because of what preceded it.
  */
@@ -188,9 +188,9 @@ export function detectFactStatement(userMessage, prevAssistant) {
   const contextualCorrection = contextualShape && hasValueToken(text);
 
   if (explicitCorrection || negatedAssertion || contextualCorrection) {
-    // A contextual shorthand ("It's an M2") needs the preceding answer to
+    // A contextual shorthand ("It's an TC20") needs the preceding answer to
     // supply its subject and old value. A self-contained rejection
-    // ("the car's chassis is M2, not F30") does not: the transaction may bind
+    // ("the car's chassis is TC20, not TC10") does not: the transaction may bind
     // its old value to same-run vault evidence instead, as the work-package
     // contract explicitly permits.
     if (contextualCorrection && !explicitCorrection && !negatedAssertion && !hasPrior) {
@@ -204,7 +204,7 @@ export function detectFactStatement(userMessage, prevAssistant) {
         : negatedAssertion
           ? "negated-correction"
           : "contextual-correction",
-      // Explicit rejections are unambiguous; a bare "it's an M2" is a
+      // Explicit rejections are unambiguous; a bare "it's an TC20" is a
       // correction only by context, which is exactly the case the finalize
       // nudge exists for, so it counts too.
       unambiguous: true,

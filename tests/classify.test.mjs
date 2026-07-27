@@ -259,7 +259,7 @@ test("negated assertions are corrections; negated instructions are not", () => {
   assert.equal(isNegatedAssertion("The wormhole never collapsed."), true);
   assert.equal(isNegatedAssertion("He didn't die in the explosion."), true);
   assert.equal(isNegatedAssertion("That was not the reason."), true);
-  assert.equal(isNegatedAssertion("the car's chassis is M2, not F30."), true);
+  assert.equal(isNegatedAssertion("the car's chassis is TC20, not TC10."), true);
   // A leading negation is an instruction.
   assert.equal(isNegatedAssertion("do not deploy that yet"), false);
   assert.equal(isNegatedAssertion("don't restart the gateway"), false);
@@ -344,13 +344,13 @@ test("empty and whitespace input is direct", () => {
 });
 
 test("a contextual correction re-grounds against the store that owns the claim", () => {
-  // WP-2026-004. "It's an M2." names nothing personal and carries no
+  // WP-2026-004. "It's an TC20." names nothing personal and carries no
   // correction vocabulary, so on the message alone it read as a named external
   // fact and demanded a web_search to re-ground a fact about the operator's own car.
-  const message = "It's an M2.";
+  const message = "It's an TC20.";
   // Was "web". The only thing making this look external was the contraction:
   // "It's" was looked up as "it's", missed "it" in COMMON_WORDS, and read as a
-  // proper noun ("M2" is skipped as an acronym). Normalising contractions
+  // proper noun ("TC20" is skipped as an acronym). Normalising contractions
   // removed that trigger, so on the message alone this is now direct — which
   // is the reading the comment above already argued for. The contextual path
   // below is what actually runs in production and is unchanged.
@@ -361,7 +361,7 @@ test("a contextual correction re-grounds against the store that owns the claim",
   );
 
   const personal = classifyGrounding(message, {
-    prevAssistant: "Sam, your car is a 330i — an F30 chassis.",
+    prevAssistant: "Sam, your car is a 330i — an TC10 chassis.",
     contextualCorrection: true,
   });
   assert.equal(personal.kind, "memory");
@@ -379,7 +379,7 @@ test("a contextual correction re-grounds against the store that owns the claim",
 
   // And context alone never invents a correction.
   assert.equal(
-    classifyGrounding("What chassis is it?", { prevAssistant: "the car is your F30." }).correction,
+    classifyGrounding("What chassis is it?", { prevAssistant: "the car is your TC10." }).correction,
     false,
   );
 });

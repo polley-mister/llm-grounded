@@ -51,10 +51,10 @@ function plugin({ sessionOverlay } = {}) {
 }
 
 const CORRECTION_TURN = {
-  prompt: "[user-message:abc123]\nIt's an M2.\n[/user-message:abc123]",
+  prompt: "[user-message:abc123]\nIt's an TC20.\n[/user-message:abc123]",
   messages: [
     { role: "user", content: "What is the car?" },
-    { role: "assistant", content: [{ type: "text", text: "the car is your 330i — an F30 chassis." }] },
+    { role: "assistant", content: [{ type: "text", text: "the car is your 330i — an TC10 chassis." }] },
   ],
 };
 
@@ -62,7 +62,7 @@ const FINALIZE = {
   runId: "run-1",
   sessionId: "sess-1",
   stopHookActive: false,
-  lastAssistantMessage: "Correct. An M2, not an F30.",
+  lastAssistantMessage: "Correct. An TC20, not an TC10.",
 };
 
 const PROPOSAL = {
@@ -70,14 +70,14 @@ const PROPOSAL = {
   subject: "CAR",
   property: "chassis code",
   operation: "correct",
-  newValue: "M2",
-  previousValue: "F30",
+  newValue: "TC20",
+  previousValue: "TC10",
 };
 
 /** Clear the grounding gate so the fact path is what is under test. */
 function ground(p, ctx) {
   p.handlers.after_tool_call(
-    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — F30." }] } },
+    { toolName: "wiki_search", params: { query: "the car" }, result: { content: [{ type: "text", text: "the car — TC10." }] } },
     ctx,
   );
 }
@@ -116,7 +116,7 @@ test("a failed commit preserves the answer and appends the note", async () => {
   await p.handlers.before_agent_finalize(FINALIZE, ctx);
 
   const delivered = p.handlers.message_sending({}, ctx);
-  assert.match(delivered.content, /An M2, not an F30/, "the answer survives");
+  assert.match(delivered.content, /An TC20, not an TC10/, "the answer survives");
   assert.match(delivered.content, /failed/i, "the failure is disclosed");
   assert.notEqual(delivered.content, FACT_FAIL_CLOSED_TEXT);
 });
@@ -132,7 +132,7 @@ test("a first-time fact statement behaves the same as a correction", async () =>
   await p.handlers.before_agent_finalize(FINALIZE, ctx);
 
   const delivered = p.handlers.message_sending({}, ctx);
-  assert.match(delivered.content, /An M2, not an F30/);
+  assert.match(delivered.content, /An TC20, not an TC10/);
   assert.match(delivered.content, /have not stored/i);
   assert.notEqual(delivered.content, FACT_FAIL_CLOSED_TEXT);
 });
@@ -200,7 +200,7 @@ test("deliver:false gets the note through the transcript", async () => {
   );
   assert.equal(written.block, undefined);
   assert.equal(written.message.content.length, 1, "reasoning traces are dropped");
-  assert.match(written.message.content[0].text, /An M2, not an F30/);
+  assert.match(written.message.content[0].text, /An TC20, not an TC10/);
   assert.match(written.message.content[0].text, /failed/i);
 });
 
@@ -208,7 +208,7 @@ test("deliver:false gets the note through the transcript", async () => {
 // 5, 6, 13 — a draft that claims the write succeeded
 // ---------------------------------------------------------------------------
 
-const CLAIMING = { ...FINALIZE, lastAssistantMessage: "Got it, I've saved that: an M2." };
+const CLAIMING = { ...FINALIZE, lastAssistantMessage: "Got it, I've saved that: an TC20." };
 
 test("a contradictory draft gets one bounded repair, not a rewrite", async () => {
   const p = plugin();
@@ -234,7 +234,7 @@ test("a still-contradictory draft is rebuilt from structured data", async () => 
   assert.equal(second, undefined, "the budget is spent; no second repair");
 
   const delivered = p.handlers.message_sending({}, ctx);
-  assert.match(delivered.content, /^Correct\. M2, not F30\./, "rebuilt from the proposal");
+  assert.match(delivered.content, /^Correct\. TC20, not TC10\./, "rebuilt from the proposal");
   assert.doesNotMatch(delivered.content, /saved/i, "neither contradictory draft ships");
   assert.equal(delivered.metadata.llmGrounded.responsePolicy, "truthful_persistence_fallback");
 });
@@ -309,22 +309,22 @@ test("a failed commit leaves the correction active for the next turn", async () 
     factKey: PROPOSAL.factKey,
     subject: PROPOSAL.subject,
     property: PROPOSAL.property,
-    currentValue: "M2",
-    supersededValues: ["F30"],
+    currentValue: "TC20",
+    supersededValues: ["TC10"],
   });
 
   const out = overlayText(
     { facts: overlay.snapshot("agent:chat:main").facts },
-    "Your stored F30 has the older interior.",
+    "Your stored TC10 has the older interior.",
   );
   assert.equal(out.changed, true);
-  assert.match(out.text, /M2/);
+  assert.match(out.text, /TC20/);
   assert.match(out.text, /superseded/);
 });
 
 test("the stronger wording is used once the overlay is holding the value", async () => {
   const overlay = createSessionOverlay();
-  overlay.hold({ sessionKey: "agent:chat:main", factKey: PROPOSAL.factKey, currentValue: "M2" });
+  overlay.hold({ sessionKey: "agent:chat:main", factKey: PROPOSAL.factKey, currentValue: "TC20" });
 
   const p = plugin({ sessionOverlay: overlay });
   const ctx = contexts();
@@ -350,7 +350,7 @@ test("without an overlay the weaker wording is used", async () => {
 
 test("one session cannot read another session's held correction", async () => {
   const overlay = createSessionOverlay();
-  overlay.hold({ sessionKey: "agent:chat:main", factKey: PROPOSAL.factKey, currentValue: "M2" });
+  overlay.hold({ sessionKey: "agent:chat:main", factKey: PROPOSAL.factKey, currentValue: "TC20" });
   assert.equal(overlay.active("agent:chat:other"), false);
   assert.deepEqual(overlay.snapshot("agent:chat:other"), { facts: {} });
   // And never under a shared default.

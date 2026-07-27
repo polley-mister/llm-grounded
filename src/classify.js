@@ -687,7 +687,7 @@ export function extractTurnNonce(prompt) {
 /**
  * The most recent assistant text in a run's prepared session messages.
  *
- * This is the claim a contextual correction is correcting — "It's an M2."
+ * This is the claim a contextual correction is correcting — "It's an TC20."
  * means nothing without it. Assistant content arrives as an array of typed
  * parts; a bare string is accepted too, because not every harness normalizes.
  * Anything unreadable yields "", which makes a correction ineligible rather
@@ -757,7 +757,7 @@ export function classifyGrounding(message, context = {}) {
   if (!trimmed) return { kind: null, correction: false, reason: "empty" };
 
   // `context.contextualCorrection` is supplied by the caller that already has
-  // the previous turn — the plugin's fact detector. A bare "It's an M2." holds
+  // the previous turn — the plugin's fact detector. A bare "It's an TC20." holds
   // no correction vocabulary and no negation, so the shapes below cannot see
   // it; without this signal it read as a named external fact and demanded a
   // web_search to re-ground a fact about the operator's own car. One-argument callers
@@ -770,7 +770,7 @@ export function classifyGrounding(message, context = {}) {
 
   // A correction always re-grounds. Route it to whichever store owns the claim.
   //
-  // A contextual correction carries almost no words of its own — "It's an M2."
+  // A contextual correction carries almost no words of its own — "It's an TC20."
   // names nothing personal, so on the message alone it fell to the web tier and
   // demanded a web_search to re-ground a fact about the operator's own car. The claim
   // being corrected is the one that decides ownership, so when the correction
