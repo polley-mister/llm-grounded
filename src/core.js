@@ -124,10 +124,13 @@ export {
   extractClaims,
   verificationTargets,
   segment as segmentDraft,
+  checkAtomicity,
   CLAIM_TYPES,
   MODALITIES,
   EVIDENCE_KINDS,
   ABSTENTION_REASONS,
+  SCHEMA_VERSION,
+  PROMPT_VERSION,
 } from "./claims.js";
 
 export {

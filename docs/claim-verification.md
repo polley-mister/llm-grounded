@@ -255,6 +255,73 @@ conflating them is how "a web tool ran" became a proxy for grounding.
 
 ---
 
+## Two layers of atomicity
+
+They are enforced in different places, and conflating them would let a
+semantically compound claim count as a partial success.
+
+**Mechanical atomicity** — decided in code by `checkAtomicity`, which abstains
+with `non_atomic_claims` on two cases that need no understanding of meaning:
+
+- a claim requiring two independent sources (`web`, `memory`, `system`) without
+  declaring `dependsOn` or a `claim:` reference;
+- a `calculated` claim sitting alongside factual peers while naming no
+  dependencies.
+
+**Semantic atomicity** — not decided in code at all. Whether a proposition
+bundles several truth-evaluable statements is measured against gold
+decomposition in scoring, where a person can see it.
+
+A third mechanical rule was considered and rejected: pattern-matching the
+proposition for multiple clauses. It cannot be decided without parsing meaning,
+and a regex attempting it would be the classifier's mistake relocated one level
+down. A test asserts the checker does *not* fire on a multi-clause proposition,
+so the boundary is pinned rather than implied.
+
+The metric that follows is **accepted non-atomic extraction = 0**. A compound
+response may abstain; it must never be accepted as a valid extraction and
+scored as partially correct.
+
+## Corpus splits
+
+Assignment is deterministic and depends only on the corpus contents, so adding
+turns to an existing group cannot reshuffle anything.
+
+1. Group turns by `(scenarioFamily, groupId)`.
+2. Within each family, order its groups by `sha256(scenarioFamily + groupId)`,
+   ascending hex. No random seed is involved; the ordering is a pure function of
+   the two identifiers.
+3. Take the first `round(0.70 × n)` groups as `dev` (at least one), then one
+   group as `validation` where at least two remain, then the rest as `test`.
+4. Write each split to its own file.
+
+Stratifying by family rather than hashing groups globally was a deliberate
+change. Global hashing left `bare-answer` with three gold claims in `dev` — the
+family most in need of prompt work was the hardest to tune on. Groups still
+never span a split, which was the property that mattered.
+
+**Adding to the corpus.** Adding turns to an existing group is safe: the group's
+assignment is unchanged. Adding a *new group* to a family re-orders that
+family's list and may move existing groups between splits. When that happens,
+say so in the commit and treat any split whose membership changed as observed.
+
+`tests/corpus.test.mjs` asserts the committed counts, that every file is tracked
+by git, that no group spans a split, and that every family appears in `dev`.
+
+## Split roles
+
+| split | role |
+|---|---|
+| `dev` | prompt iteration; may be run any number of times |
+| `validation` | a one-time regression canary after the prompt is chosen |
+| `test-v2` | final evaluation, run once, never during development |
+
+`validation` is 8 turns. That is too few for threshold selection or a stable
+per-type rate, and it is not used for either — it is reported as raw counts
+("7 of 8 turns matched all gold claims"). Revising the prompt after seeing it
+turns it into development data, and that must be recorded rather than quietly
+absorbed.
+
 ## Calibration
 
 The live corpus is too small and too smoke-test-heavy to calibrate against: 71

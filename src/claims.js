@@ -68,7 +68,24 @@ export const ABSTENTION_REASONS = Object.freeze([
   "non_atomic_claims",
 ]);
 
+export const SCHEMA_VERSION = "claims-v2";
 export const PROMPT_VERSION = "claims-v1";
+
+/**
+ * Whether a claim was produced in the v2 shape.
+ *
+ * The parser accepts v1 so the frozen baseline can still be replayed, but a v2
+ * run that quietly emits legacy-shaped claims would score as a success while
+ * having ignored the contract. Counted rather than assumed.
+ */
+export function isV2Shape(raw) {
+  return Boolean(
+    raw &&
+      typeof raw.surfaceText === "string" && raw.surfaceText.trim() &&
+      typeof raw.proposition === "string" && raw.proposition.trim() &&
+      Number.isInteger(raw.sourceStart) && Number.isInteger(raw.sourceEnd),
+  );
+}
 
 /** Bounds. An unbounded extractor is an unbounded failure surface. */
 const MAX_CLAIMS = 24;
@@ -168,6 +185,7 @@ function noClaims(provenance) {
  */
 export function validateClaim(raw, { draft, spans }) {
   if (!raw || typeof raw !== "object") return null;
+  const v2Shape = isV2Shape(raw);
 
   // `surfaceText` is what appears in the draft and must locate against
   // offsets. `text` is accepted as its legacy name so a prompt that predates
@@ -251,6 +269,9 @@ export function validateClaim(raw, { draft, spans }) {
         : factual && material && !["hypothetical", "interrogative", "imperative"].includes(raw.modality),
     requiredEvidence: required.length ? [...required] : ["none"],
     confidence,
+    // Whether the model actually used the v2 contract, as opposed to legacy
+    // output that happened to validate.
+    v2Shape,
   };
 }
 
@@ -445,6 +466,7 @@ export async function extractClaims(input = {}, opts = {}) {
   const provenance = {
     provider: result?.provider ?? null,
     model: result?.model ?? null,
+    schemaVersion: SCHEMA_VERSION,
     promptVersion: PROMPT_VERSION,
   };
 

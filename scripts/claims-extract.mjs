@@ -183,6 +183,9 @@ function score(records) {
     bareAnswer: { gold: 0, found: 0 },
     // The invariant that must never regress while recall improves.
     invalidAccepted: 0,
+    // Claims that validated but used the v1 shape. A v2 run producing these is
+    // ignoring the contract while appearing to succeed.
+    legacyShapedClaims: 0,
   };
 
   for (const r of records) {
@@ -191,6 +194,7 @@ function score(records) {
       m.abstentionReasons[r.abstentionReason] = (m.abstentionReasons[r.abstentionReason] ?? 0) + 1;
     }
     m.predictedClaims += r.predictedClaims.length;
+    m.legacyShapedClaims += r.predictedClaims.filter((c) => c.v2Shape === false).length;
     if (!Array.isArray(r.goldClaims)) continue;
 
     m.labelled += 1;
@@ -239,7 +243,7 @@ function report(m) {
     lines.push(`    ${reason}: ${n}`);
   }
   lines.push("");
-  lines.push(`predicted claims:   ${m.predictedClaims}`);
+  lines.push(`predicted claims:   ${m.predictedClaims}   legacy-shaped: ${m.legacyShapedClaims}`);
   lines.push(`labelled turns:     ${m.labelled}   gold claims: ${m.goldClaims}`);
 
   if (m.labelled) {

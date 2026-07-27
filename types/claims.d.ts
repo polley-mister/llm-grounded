@@ -5,7 +5,16 @@ export declare const MODALITIES: readonly string[];
 /** Evidence kinds. Multi-label: one claim may need several. */
 export declare const EVIDENCE_KINDS: readonly string[];
 export declare const ABSTENTION_REASONS: readonly string[];
+export declare const SCHEMA_VERSION = "claims-v2";
 export declare const PROMPT_VERSION = "claims-v1";
+/**
+ * Whether a claim was produced in the v2 shape.
+ *
+ * The parser accepts v1 so the frozen baseline can still be replayed, but a v2
+ * run that quietly emits legacy-shaped claims would score as a success while
+ * having ignored the contract. Counted rather than assumed.
+ */
+export declare function isV2Shape(raw: any): boolean;
 /**
  * Split a draft into sentence spans, preserving offsets.
  *
@@ -47,6 +56,7 @@ export declare function validateClaim(raw: any, { draft, spans }: {
     verificationTarget: any;
     requiredEvidence: any[];
     confidence: number;
+    v2Shape: boolean;
 } | null;
 /**
  * Reject a claim set that is not atomic.
@@ -92,6 +102,7 @@ export declare function parseExtraction(text: any, { draft, spans }: {
         verificationTarget: any;
         requiredEvidence: any[];
         confidence: number;
+        v2Shape: boolean;
         id: any;
     }[];
 };
@@ -135,6 +146,7 @@ export declare function extractClaims(input?: {
     provenance: {
         provider: any;
         model: any;
+        schemaVersion: string;
         promptVersion: string;
     };
     claims: {
@@ -152,6 +164,7 @@ export declare function extractClaims(input?: {
         verificationTarget: any;
         requiredEvidence: any[];
         confidence: number;
+        v2Shape: boolean;
         id: any;
     }[] | undefined;
 }>;
