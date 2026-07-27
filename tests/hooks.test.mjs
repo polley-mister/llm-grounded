@@ -42,7 +42,7 @@ test("a direct native turn gets only the compact voice reminder and ships normal
   assert.equal(built.appendContext, VOICE_CODA, "a direct native turn appends the coda and nothing else");
   assert.doesNotMatch(built.appendContext, /web_search|memory_search/, "no grounding requirement");
   // WP-2026-005: the coda is generic. The retired version calibrated a stance
-  // for questions about the operator's car and his profile, which is a second,
+  // for questions about the operator's car and their profile, which is a second,
   // partial persona specification competing with SOUL.md.
   assert.doesNotMatch(built.appendContext, /stance|profile|car|review/i);
   assert.match(built.prependSystemContext, /Correction rule/);
@@ -66,7 +66,7 @@ test("REGRESSION: an identity turn requires no tool and no control-file lookup",
     const built = await h.before_prompt_build({ prompt, messages: [] }, ctx);
     assert.equal(built.appendContext, VOICE_CODA, `${prompt}: coda only`);
     assert.doesNotMatch(built.appendContext, /web_search|memory_search|wiki_search/, prompt);
-    assert.doesNotMatch(built.prependSystemContext, /TARS_CONTROL|SOUL\.md|AGENTS\.md/, prompt);
+    assert.doesNotMatch(built.prependSystemContext, /CONTROL_SURFACE|SOUL\.md|AGENTS\.md/, prompt);
 
     const finalize = await h.before_agent_finalize(
       { sessionId: "sess-1", stopHookActive: false, lastAssistantMessage: "the agent. the operator's operator." },

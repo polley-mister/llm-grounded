@@ -7,7 +7,7 @@
 import path from "node:path";
 
 import { DEFAULT_EVIDENCE_DIR } from "./evidence.js";
-import { openclawHome, pluginVarDir } from "./paths.js";
+import { varDir, workspaceDir } from "./paths.js";
 
 export const DEFAULTS = Object.freeze({
   // The agents this contract governs. An empty array means every agent;
@@ -36,7 +36,7 @@ export const DEFAULTS = Object.freeze({
   // deliberate behaviour change so analysis can segment by epoch instead of
   // requiring a development freeze.
   behaviorEpoch: "v1.11.0-advisory",
-  telemetryDir: path.join(pluginVarDir(), "telemetry"),
+  telemetryDir: path.join(varDir(), "telemetry"),
   telemetryRetentionDays: 30,
   maxVoiceRevisions: 1,
   voiceMaxWords: 90,
@@ -47,7 +47,7 @@ export const DEFAULTS = Object.freeze({
   maxEvidenceChars: 1200,
   maxFactRevisions: 1,
   // Explicit session-key prefixes that count as a direct owner conversation.
-  // the console's console and one-shot CLI runs pass an explicit session
+  // A front-end console and one-shot CLI runs pass an explicit session
   // key that OpenClaw does not normalize into `agent:<id>:main…`, so they are
   // recognized by prefix instead. Group and channel keys are refused
   // structurally and cannot be allowed from here.
@@ -58,6 +58,15 @@ export const DEFAULTS = Object.freeze({
   // routing costs a slightly worse suggestion and nothing else.
   personalTerms: [],
   agentNames: [],
+  // Prompt surfaces to hash into each telemetry record's `promptHash`. A
+  // wording change here alters behaviour without touching code, so a corpus
+  // that cannot see it will eventually be used to justify a wrong conclusion.
+  //
+  // Contents are never read into a record — only a hash. The defaults are
+  // OpenClaw's workspace files; point this at your own prompt sources on any
+  // other host. Files that do not exist hash as "absent", so a wrong path
+  // degrades to a constant rather than an error.
+  promptFiles: ["SOUL.md", "AGENTS.md"].map((f) => path.join(workspaceDir(), f)),
 });
 
 // There is deliberately no `failClosedText` option. The injected requirement,
@@ -201,6 +210,12 @@ export const CONFIG_JSON_SCHEMA = Object.freeze({
       description:
         "Names this agent answers to. Being addressed by name is stripped before classification, so a capitalised agent name is not read as a reference to the outside world.",
     },
+    promptFiles: {
+      type: "array",
+      items: { type: "string", minLength: 1 },
+      description:
+        "Absolute paths to the prompt surfaces hashed into each telemetry record. Contents are never copied into a record. Missing files hash as absent.",
+    },
   },
 });
 
@@ -324,6 +339,13 @@ export function parseConfig(value) {
           return issue("directSessionPrefixes must not match group or channel sessions");
         }
         out.directSessionPrefixes = [...raw];
+        break;
+      }
+      case "promptFiles": {
+        if (!Array.isArray(raw) || raw.some((x) => typeof x !== "string" || !x)) {
+          return issue("promptFiles must be an array of non-empty paths");
+        }
+        out.promptFiles = [...raw];
         break;
       }
       case "personalTerms":

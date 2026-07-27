@@ -15,10 +15,10 @@
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { pluginVarDir } from "./paths.js";
+import { varDir } from "./paths.js";
 
 export const EVIDENCE_VERSION = 1;
-export const DEFAULT_EVIDENCE_DIR = path.join(pluginVarDir(), "evidence");
+export const DEFAULT_EVIDENCE_DIR = path.join(varDir(), "evidence");
 
 const DIR_MODE = 0o700;
 const FILE_MODE = 0o600;
@@ -95,7 +95,7 @@ export async function writeEvidence(dir, sessionId, record, logger) {
     });
     return target;
   } catch (err) {
-    logger?.warn?.(`groundskeeper: evidence write failed: ${String(err?.message ?? err)}`);
+    logger?.warn?.(`llmGrounded: evidence write failed: ${String(err?.message ?? err)}`);
     return null;
   }
 }

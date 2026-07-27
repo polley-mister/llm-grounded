@@ -1,14 +1,23 @@
-# Groundskeeper
+# llm-grounded
 
-A deterministic grounding and voice contract for [OpenClaw](https://openclaw.ai)
-agents.
+A deterministic grounding and voice contract for LLM agents.
 
-Groundskeeper sits between a model and its user as a set of plugin hooks. It
-decides — in ordinary code, not in a prompt — when an answer needs evidence,
-whether the evidence actually arrived, and whether the reply that came back is
-the shape the operator asked for. When something is missing it asks for one
-bounded revision, and when that fails it says so rather than shipping a
-confident guess.
+llm-grounded sits between a model and its user. It decides — in ordinary code,
+not in a prompt — when an answer needs evidence, whether the evidence actually
+arrived, and whether the reply that came back is the shape the operator asked
+for. When something is missing it asks for one bounded revision, and when that
+fails it says so rather than shipping a confident guess.
+
+**The core is framework-independent.** It is plain synchronous functions over
+strings and plain objects: it opens no sockets, calls no model, and holds no
+framework types. An [OpenClaw](https://openclaw.ai) plugin adapter ships in the
+box; for anything else — LangGraph, the Vercel AI SDK, the OpenAI Agents SDK, a
+hand-rolled loop — import the core and write the adapter, which is a handful of
+call sites. See **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
+
+```js
+import { hardTrigger, assessToolSafety, assessVoice } from "llm-grounded/core";
+```
 
 It is small, dependency-free, and heavily commented. Most of the comments
 explain a failure that happened in production.
@@ -92,22 +101,48 @@ withholds the write or the answer, it does not silently open the gate.
 ## Install
 
 ```bash
-git clone https://github.com/OWNER/openclaw-groundskeeper.git
-cd openclaw-groundskeeper
-npm test                      # 210 tests, no dependencies
+git clone https://github.com/OWNER/llm-grounded.git
+cd llm-grounded
+npm test                      # 215 tests, no dependencies
+```
+
+Requires Node 22.19+. There are no runtime dependencies and nothing to build.
+
+### As an OpenClaw plugin
+
+```bash
 openclaw plugins install --link "$PWD"
 ```
 
-Then add configuration under `plugins.entries.groundskeeper.config` — see
+Then add configuration under `plugins.entries.llm-grounded.config` — see
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md) and
-[examples/config.example.json](examples/config.example.json).
-
-Requires Node 22.19+ and OpenClaw 2026.6.0+.
+[examples/config.example.json](examples/config.example.json). Requires OpenClaw
+2026.6.0+.
 
 **OpenClaw does not reload plugin code on its own.** Restart the gateway after
 installing or editing, or you will spend an evening debugging behaviour that is
 not the behaviour you have on disk. This has happened to the author more than
 once.
+
+### In any other stack
+
+```js
+import {
+  hardTrigger, requirementText, advisoryText,
+  assessToolSafety, blockMessage, assessVoice,
+} from "llm-grounded/core";
+```
+
+Three call sites — before you build the prompt, around tool dispatch, and after
+the model drafts — get you the grounding, sensitive-search and voice gates.
+Adding the obligation store and the turn logger is another dozen lines.
+[docs/INTEGRATION.md](docs/INTEGRATION.md) has the full walkthrough, a mapping
+table for common frameworks, and the invariants you must not break in an
+adapter.
+
+The OpenClaw peer dependency is declared optional; `llm-grounded/core` never
+imports it, and `tests/core.test.mjs` asserts that structurally so it stays
+true.
 
 ## Configuration you should not skip
 
@@ -136,6 +171,8 @@ suggestion and nothing else.
 
 ## Documentation
 
+- [Integration](docs/INTEGRATION.md) — using the core outside OpenClaw: the
+  seam, the call sites, per-framework notes, and what you give up
 - [Architecture](docs/ARCHITECTURE.md) — the hooks, the precedence chain, why
   the classifier is advisory, and what is deliberately not built yet
 - [Configuration](docs/CONFIGURATION.md) — every key, what it does, what

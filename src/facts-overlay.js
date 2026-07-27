@@ -69,7 +69,7 @@ export function createOverlayReader({ vaultPath, cacheMs = DEFAULT_CACHE_MS, now
         cached = parsed && typeof parsed.facts === "object" && parsed.facts ? parsed : { facts: {} };
       } catch (err) {
         if (err?.code !== "ENOENT") {
-          logger?.warn?.(`groundskeeper: fact overlay unreadable: ${String(err?.message ?? err)}`);
+          logger?.warn?.(`llmGrounded: fact overlay unreadable: ${String(err?.message ?? err)}`);
         }
         cached = { facts: {} };
       }

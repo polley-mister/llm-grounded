@@ -1,4 +1,4 @@
-// groundskeeper — deterministic evidence gate for the agent turns.
+// llm-grounded — deterministic evidence gate for the agent turns.
 //
 // Contract (from WP-2026-002, extended by WP-2026-004):
 //   before_prompt_build     classify the turn, capture the exact operator text
@@ -73,7 +73,7 @@ const PLUGIN_VERSION = (() => {
 /** Retrievals whose successful results may be bound into the audit packet. */
 const EVIDENCE_TOOLS = ["wiki_search", "wiki_get"];
 
-export const PLUGIN_ID = "groundskeeper";
+export const PLUGIN_ID = "llm-grounded";
 
 /**
  * Installation vocabulary last applied to the classifier.
@@ -371,7 +371,7 @@ export function createPlugin(deps = {}) {
           telemetryBlocked.set(k, blocked);
         }
         deps.logger?.warn?.(
-          `groundskeeper: blocked ${event?.toolName} (${safety.reason})`,
+          `llmGrounded: blocked ${event?.toolName} (${safety.reason})`,
         );
         return { block: true, blockReason: blockMessage() };
       }
@@ -398,17 +398,17 @@ export function createPlugin(deps = {}) {
           return {
             block: true,
             blockReason:
-              "groundskeeper: durable facts may be changed only through vault_fact_commit",
+              "llm-grounded: durable facts may be changed only through vault_fact_commit",
           };
         }
         return;
       }
       if (event?.toolName !== FACT_TOOL_NAME) return;
       if (!factsApplyToAgent(cfg, ctx?.agentId)) {
-        return { block: true, blockReason: "groundskeeper: vault_fact_commit is not enabled for this agent" };
+        return { block: true, blockReason: "llm-grounded: vault_fact_commit is not enabled for this agent" };
       }
       if (!store) {
-        return { block: true, blockReason: "groundskeeper: no turn state for this run" };
+        return { block: true, blockReason: "llm-grounded: no turn state for this run" };
       }
       const bound = store.bindToolCall({
         // OpenClaw's typed hook contract carries toolCallId on both the event
@@ -419,7 +419,7 @@ export function createPlugin(deps = {}) {
         sessionKey: ctx?.sessionKey,
       });
       if (!bound) {
-        return { block: true, blockReason: "groundskeeper: this tool call could not be bound to a turn" };
+        return { block: true, blockReason: "llm-grounded: this tool call could not be bound to a turn" };
       }
       return;
     },
@@ -470,7 +470,7 @@ export function createPlugin(deps = {}) {
             reason: instruction,
             retry: {
               instruction,
-              idempotencyKey: `groundskeeper:${key.runId ?? key.sessionKey}`,
+              idempotencyKey: `llmGrounded:${key.runId ?? key.sessionKey}`,
               maxAttempts: cfg.maxRevisions,
             },
           };
@@ -502,7 +502,7 @@ export function createPlugin(deps = {}) {
             reason: verdict.instruction,
             retry: {
               instruction: verdict.instruction,
-              idempotencyKey: `groundskeeper-voice:${key.runId ?? key.sessionKey}`,
+              idempotencyKey: `llm-grounded-voice:${key.runId ?? key.sessionKey}`,
               maxAttempts: cfg.maxVoiceRevisions,
             },
           };
@@ -601,8 +601,8 @@ export function createPlugin(deps = {}) {
       const factOnly = !entry.failClosed && entry.factFailClosed;
       const replacement = factOnly ? FACT_FAIL_CLOSED_TEXT : FAIL_CLOSED_TEXT;
       const reason = factOnly
-        ? `groundskeeper: durable ${entry.factKind} not recorded`
-        : `groundskeeper: ${entry.kind} grounding not verified`;
+        ? `llmGrounded: durable ${entry.factKind} not recorded`
+        : `llmGrounded: ${entry.kind} grounding not verified`;
       // One turn can normalize into several payloads. The replacement line
       // belongs on the first; repeating it once per chunk would be noise.
       if (store.noteFailClosedEmission({ ...key, lane: "payload" }) > 0) {
@@ -631,14 +631,14 @@ export function createPlugin(deps = {}) {
         return {
           cancel: true,
           cancelReason: factOnly
-            ? `groundskeeper: durable ${entry.factKind} not recorded`
-            : `groundskeeper: ${entry.kind} grounding not verified`,
+            ? `llmGrounded: durable ${entry.factKind} not recorded`
+            : `llmGrounded: ${entry.kind} grounding not verified`,
         };
       }
       return {
         content: factOnly ? FACT_FAIL_CLOSED_TEXT : FAIL_CLOSED_TEXT,
         metadata: {
-          groundskeeper: {
+          llmGrounded: {
             failClosed: !factOnly,
             factFailClosed: entry.factFailClosed,
             grounding: entry.kind,
@@ -671,8 +671,8 @@ export function createPlugin(deps = {}) {
         // `hooks.allowPromptInjection` is false for this plugin. That is a
         // silent fail-open, so say so rather than letting it pass unnoticed.
         deps.logger?.warn?.(
-          "groundskeeper: no classification for this turn; " +
-            "check plugins.entries.groundskeeper.hooks.allowPromptInjection",
+          "llm-grounded: no classification for this turn; " +
+            "check plugins.entries.llmGrounded.hooks.allowPromptInjection",
         );
         return;
       }
@@ -716,7 +716,7 @@ export function createPlugin(deps = {}) {
       reason: instruction,
       retry: {
         instruction,
-        idempotencyKey: `groundskeeper-fact:${entry.runId ?? entry.sessionKey}`,
+        idempotencyKey: `llm-grounded-fact:${entry.runId ?? entry.sessionKey}`,
         maxAttempts: 1,
       },
     };
@@ -739,7 +739,7 @@ export function createPlugin(deps = {}) {
       reason: instruction,
       retry: {
         instruction,
-        idempotencyKey: `groundskeeper-fact-closure:${entry.runId ?? entry.sessionKey}`,
+        idempotencyKey: `llm-grounded-fact-closure:${entry.runId ?? entry.sessionKey}`,
         maxAttempts: 1,
       },
     };
@@ -872,7 +872,7 @@ export function createPlugin(deps = {}) {
 
   return {
     id: PLUGIN_ID,
-    name: "Groundskeeper",
+    name: "llm-grounded",
     description: "Deterministic grounding and voice contract for OpenClaw agents.",
     /**
      * Test-only introspection of per-turn state. Not part of the OpenClaw
@@ -962,14 +962,14 @@ export function createPlugin(deps = {}) {
           const applied = overlayToolResult(loaded, event?.result);
           if (!applied) return;
           deps.logger?.debug?.(
-            `groundskeeper: overlaid ${applied.conflicts.length} authoritative fact(s) on ${event.toolName}`,
+            `llmGrounded: overlaid ${applied.conflicts.length} authoritative fact(s) on ${event.toolName}`,
           );
           return { result: applied.result };
         },
         // Declared in openclaw.plugin.json as contracts.agentToolResultMiddleware.
         // Registration is refused without it, and refused again unless the
         // plugin is explicitly enabled in config — both are true of the staged
-        // patch, which sets plugins.entries.groundskeeper.enabled: true.
+        // patch, which sets plugins.entries.llmGrounded.enabled: true.
         { runtimes: ["openclaw"] },
       );
 

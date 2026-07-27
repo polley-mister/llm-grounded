@@ -1,6 +1,6 @@
 # Configuration
 
-All keys live under `plugins.entries.groundskeeper.config` in
+All keys live under `plugins.entries.llm-grounded.config` in
 `openclaw.json`. The schema is `additionalProperties: false` and validation is
 strict: an unknown key, or a value outside its range, fails config load rather
 than being ignored.
@@ -18,12 +18,12 @@ believing a gate is disabled when it is not.
 | `maxRevisions` | 0..2 | `1` | Bounded extra model passes requested when grounding is missing. |
 | `stateTtlSeconds` | 30..3600 | `600` | How long per-turn grounding state is retained. |
 | `maxTrackedTurns` | 10..2000 | `200` | Upper bound on concurrently tracked turns. |
-| `evidenceDir` | string | `$OPENCLAW_HOME/var/groundskeeper/evidence` | Directory for per-session grounding evidence records. |
+| `evidenceDir` | string | `$OPENCLAW_HOME/var/llm-grounded/evidence` | Directory for per-session grounding evidence records. |
 | `maxEvidenceItems` | 1..10 | `4` | How many successful retrievals are bound into the audit packet. |
 | `maxEvidenceChars` | 200..8000 | `1200` | Per-excerpt character bound for bound evidence. |
 | `maxVoiceRevisions` | 0..2 | `1` | Bounded extra passes when a reply violates the voice rules. **0 disables the voice gate.** |
 | `voiceMaxWords` | 20..400 | `90` | Word count above which a reply is treated as long. Targets the tail, not the median. |
-| `telemetryDir` | string | `$OPENCLAW_HOME/var/groundskeeper/telemetry` | Per-turn telemetry, JSONL, one file per day. **Empty string disables logging.** |
+| `telemetryDir` | string | `$OPENCLAW_HOME/var/llm-grounded/telemetry` | Per-turn telemetry, JSONL, one file per day. **Empty string disables logging.** |
 | `telemetryRetentionDays` | 1..365 | `30` | Days of telemetry retained. Older day files are pruned. |
 | `behaviorEpoch` | string | `"v1.11.0-advisory"` | Label for the behaviour regime that produced a record. Bump on every deliberate behaviour change. |
 | `directSessionPrefixes` | array | `[]` | Session-key prefixes treated as a direct owner conversation. Group and channel keys are refused structurally and cannot be allowed here. |
@@ -38,14 +38,24 @@ believing a gate is disabled when it is not.
 
 ## Paths
 
-Directories default under the OpenClaw home, resolved in this order:
+State is host-independent. The root is resolved in this order:
 
-1. `$OPENCLAW_HOME`
-2. `$HOME/.openclaw`
+1. `$LLM_GROUNDED_HOME` — explicit override
+2. `$XDG_STATE_HOME/llm-grounded` — when `XDG_STATE_HOME` is set
+3. `$HOME/.local/state/llm-grounded` — the ordinary default
+
+Every directory is also overridable through config (`evidenceDir`,
+`telemetryDir`), so a fresh install needs no environment variables at all.
 
 Nothing is hardcoded to an absolute path. Directories are created mode `0700`
 and files mode `0600`, because both telemetry and evidence contain verbatim
 conversation text.
+
+One default *is* host-shaped: `promptFiles` points at OpenClaw's workspace
+prompt files, because their hash is what tells a telemetry record which prompt
+surface produced it. On any other host, point it at your own prompt sources.
+Files that do not exist hash as `"absent"`, so a wrong path degrades to a
+constant rather than an error.
 
 ## Vocabulary
 

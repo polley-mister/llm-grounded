@@ -111,7 +111,7 @@ export function hardTrigger(message, context = {}) {
   if (matchesAny(ADMIN_COMMANDS, text)) return { kind: "admin", reason: "explicit-admin" };
 
   // A correction binds the persistence path and nothing else. It compels no
-  // retrieval: the operator is the authoritative source for their own world, so his
+  // retrieval: the operator is the authoritative source for their own world, so their
   // assertion is the evidence. Any lookup that follows is to locate the record
   // being superseded, not to believe the new value.
   const correction = resolveCorrection(text, context.prevAssistant);

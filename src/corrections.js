@@ -7,7 +7,7 @@
 //
 // It is NOT "every correction must run memory_search". Those are different
 // claims, and conflating them is what put the grounding gate in front of
-// ordinary conversation. the operator is the authoritative source for which car he
+// ordinary conversation. the operator is the authoritative source for which car they
 // owns; a lookup may be needed to find the record being replaced, but not to
 // believe the new value.
 //
@@ -124,7 +124,7 @@ export function resolveCorrection(userMessage, prevAssistant) {
     };
   }
 
-  // the operator's own world, stated plainly. His assertion is the evidence; any
+  // the operator's own world, stated plainly. Their assertion is the evidence; any
   // lookup that follows is to find the record being superseded.
   return {
     isCorrection: true,

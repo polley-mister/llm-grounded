@@ -1,6 +1,6 @@
 {
-  "id": "groundskeeper",
-  "name": "Groundskeeper",
+  "id": "llm-grounded",
+  "name": "llm-grounded",
   "description": "Deterministic grounding and voice contract for OpenClaw agents.",
   "version": "1.11.0",
   "activation": {
@@ -152,6 +152,14 @@
           "minLength": 2
         },
         "description": "Names this agent answers to. Being addressed by name is stripped before classification, so a capitalised agent name is not read as a reference to the outside world."
+      },
+      "promptFiles": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Absolute paths to the prompt surfaces hashed into each telemetry record. Contents are never copied into a record. Missing files hash as absent."
       }
     }
   },

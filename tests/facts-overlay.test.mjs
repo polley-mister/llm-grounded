@@ -133,7 +133,7 @@ function registeredMiddleware(cfg, { overlayReader } = {}) {
     on: () => {},
     registerTool: () => {},
     registerAgentToolResultMiddleware: (handler, opts) => registrations.push({ handler, opts }),
-    config: { plugins: { entries: { "groundskeeper": { config: cfg } } } },
+    config: { plugins: { entries: { "llm-grounded": { config: cfg } } } },
   });
   assert.equal(registrations.length, 1, "exactly one middleware must be registered");
   return { ...registrations[0], plugin: p };

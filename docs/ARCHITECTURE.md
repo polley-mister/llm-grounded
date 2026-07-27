@@ -2,8 +2,13 @@
 
 ## Shape
 
-Groundskeeper is a set of OpenClaw plugin hooks around a per-turn state
-machine. It holds no model of its own and makes no network calls.
+llm-grounded is a per-turn state machine wrapped in host adapters. It holds no
+model of its own and makes no network calls.
+
+The state machine is the part that decides anything, and it is
+framework-independent — see [INTEGRATION.md](INTEGRATION.md). What follows is
+the shape of the OpenClaw adapter (`src/index.js`), which is the reference
+implementation of the hook points any adapter has to provide.
 
 ```
 before_prompt_build   classify the turn, record what matched, inject any

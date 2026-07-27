@@ -33,7 +33,7 @@ export const CORRECTION_RULE = [
  */
 export const VOICE_CODA = [
   "Reply as the agent, in the voice SOUL.md defines.",
-  "Answer what the operator asked, at the depth he asked for; do not narrate internal rules or process.",
+  "Answer what the operator asked, at the depth they asked for; do not narrate internal rules or process.",
   "Where an instruction above requires a specific output structure, that structure wins.",
 ].join(" ");
 
@@ -84,16 +84,16 @@ export function revisionInstruction(kind, userTurn) {
  * that actually have the tool. Kept on the cacheable system surface.
  */
 export const FACT_RULE = [
-  "Durable personal facts: when the operator states a lasting fact about his own",
+  "Durable personal facts: when the operator states a lasting fact about their own",
   "world, or corrects one you got wrong, call vault_fact_commit in the same",
-  "turn, before you reply. Use his values, not your paraphrase. Do not call it",
+  "turn, before you reply. Use their values, not your paraphrase. Do not call it",
   "for questions, guesses, jokes, hypotheticals, or claims about other people.",
 ].join(" ");
 
 /**
  * Bounded revision instruction for a turn that stated a durable fact and then
  * did not record it. One pass only — the reply still ships either way, because
- * a missed capture must never cost the operator his answer.
+ * a missed capture must never cost the operator their answer.
  */
 export function factRevisionInstruction(kind) {
   const verb = kind === "correct" ? "corrected a fact you had wrong" : "stated a durable personal fact";

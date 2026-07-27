@@ -79,7 +79,12 @@ function fileFor(dir, when) {
 // ---------------------------------------------------------------------------
 
 /** Prompt surfaces. A wording change alters behaviour without touching code. */
-const PROMPT_FILES = ["SOUL.md", "AGENTS.md"].map((f) => path.join(workspaceDir(), f));
+/**
+ * Default prompt surfaces, used only when config supplies none. Overridable
+ * through the `promptFiles` config key, which is how a non-OpenClaw host
+ * points this at its own prompt sources.
+ */
+const DEFAULT_PROMPT_FILES = ["SOUL.md", "AGENTS.md"].map((f) => path.join(workspaceDir(), f));
 
 /** Rule surfaces. An edit here changes decisions without touching the prompt. */
 const RULESET_FILES = ["classify.js", "voice.js", "contract.js"];
@@ -126,7 +131,7 @@ export async function behaviorIdentity(cfg, extra = {}) {
   };
   identityCache = {
     behaviorEpoch: cfg?.behaviorEpoch ?? null,
-    promptHash: `sha256:${await hashFiles(PROMPT_FILES)}`,
+    promptHash: `sha256:${await hashFiles(cfg?.promptFiles?.length ? cfg.promptFiles : DEFAULT_PROMPT_FILES)}`,
     rulesetHash: `sha256:${await hashFiles(RULESET_FILES, (f) => `${here}${f}`)}`,
     configHash: `sha256:${sha(JSON.stringify(behaviour))}`,
     model: extra.model ?? null,
@@ -242,7 +247,7 @@ export async function writeTurn(dir, record, logger) {
     });
     return target;
   } catch (err) {
-    logger?.warn?.(`groundskeeper: telemetry write failed: ${String(err?.message ?? err)}`);
+    logger?.warn?.(`llmGrounded: telemetry write failed: ${String(err?.message ?? err)}`);
     return null;
   }
 }
@@ -263,7 +268,7 @@ export async function pruneTurns(dir, retentionDays = DEFAULT_RETENTION_DAYS, lo
       }
     }
   } catch (err) {
-    logger?.warn?.(`groundskeeper: telemetry prune failed: ${String(err?.message ?? err)}`);
+    logger?.warn?.(`llmGrounded: telemetry prune failed: ${String(err?.message ?? err)}`);
   }
   return removed;
 }

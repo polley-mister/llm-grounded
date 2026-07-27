@@ -65,9 +65,9 @@ export const FACT_TOOL_PARAMETERS = Object.freeze({
 export const FACT_TOOL_DESCRIPTION = [
   "Record one durable personal fact about the operator, or correct one you got wrong,",
   "in the authoritative vault fact store. Use it in the same turn the operator states",
-  "the fact — before you reply. The values must be his, not your paraphrase.",
+  "the fact — before you reply. The values must be theirs, not your paraphrase.",
   "Do not use it for questions, guesses, jokes, hypotheticals, third-party",
-  "claims, or anything he did not actually assert.",
+  "claims, or anything they did not actually assert.",
 ].join(" ");
 
 function textResult(text, details) {
@@ -101,7 +101,7 @@ export function containsValue(haystack, needle) {
  * shared conversation. OpenClaw collapses direct chats to the agent's canonical
  * main bucket (`agent:<id>:main…`) or a per-peer direct bucket
  * (`…:direct:<peer>`), and keeps group/channel sessions isolated under `:group:`
- * / `:channel:` segments. Explicit keys — the console's console and one-shot
+ * / `:channel:` segments. Explicit keys — a front-end console and one-shot
  * CLI runs — use OpenClaw's canonical `agent:<id>:explicit:<session-id>`
  * shape. The Gateway marks authenticated operator calls as owner requests;
  * recognizing that canonical shape keeps the console direct while the
@@ -378,7 +378,7 @@ export function createFactTool({ cfg, store, ctx, deps = {}, logger }) {
       });
       if (!audited.ok) {
         store.setFactOutcome(key, audited);
-        logger?.warn?.(`groundskeeper: ${AUDIT_PURPOSE} failed closed: ${audited.code}`);
+        logger?.warn?.(`llmGrounded: ${AUDIT_PURPOSE} failed closed: ${audited.code}`);
         return failure(audited.code, audited.message ?? "the audit did not complete", {
           attribution: audited.attribution,
         });
@@ -451,7 +451,7 @@ export function createFactTool({ cfg, store, ctx, deps = {}, logger }) {
           runId: entry.runId ?? null,
           sessionId: ctx?.sessionId ?? entry.sessionKey ?? null,
           agentId: ctx?.agentId ?? null,
-          writer: "groundskeeper",
+          writer: "llm-grounded",
           case: {
             decision: audited.decision.decision,
             reason: audited.decision.reason,

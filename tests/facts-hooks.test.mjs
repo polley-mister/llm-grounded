@@ -56,7 +56,7 @@ test("the turn's exact text, prior answer and fact verdict are captured once", a
 
   // A rebuilt prompt inside the same run must not reclassify or re-capture.
   await p.handlers.before_prompt_build(
-    { prompt: "groundskeeper: Grounding required for this turn: run wiki_search", messages: [] },
+    { prompt: "llm-grounded: Grounding required for this turn: run wiki_search", messages: [] },
     ctx,
   );
   const result = await p.handlers.before_prompt_build(CORRECTION_TURN, ctx);
@@ -206,7 +206,7 @@ test("an unambiguous uncaptured fact turn gets one transaction nudge, then a clo
   const first = await p.handlers.before_agent_finalize(event, ctx);
   assert.equal(first.action, "revise");
   assert.match(first.retry.instruction, /vault_fact_commit/);
-  assert.match(first.retry.idempotencyKey, /^groundskeeper-fact:/);
+  assert.match(first.retry.idempotencyKey, /^llm-grounded-fact:/);
 
   const second = await p.handlers.before_agent_finalize(event, ctx);
   assert.equal(second.action, "revise", "the transaction nudge is not repeated");
@@ -283,7 +283,7 @@ const FACTORY_BASE = {
   senderIsOwner: true,
   sessionKey: "agent:chat:main",
   runtimeConfig: {
-    plugins: { entries: { "groundskeeper": { config: { ...FACTS_CONFIG, directSessionPrefixes: ["mc-chat"] } } } },
+    plugins: { entries: { "llm-grounded": { config: { ...FACTS_CONFIG, directSessionPrefixes: ["mc-chat"] } } } },
   },
 };
 
@@ -411,7 +411,7 @@ test("a failed transaction forces a non-delivery closure pass and latches delive
     // The acknowledgement never ships.
     const delivered = p.handlers.message_sending({}, ctx);
     assert.equal(delivered.content, FACT_FAIL_CLOSED_TEXT, outcome.code);
-    assert.equal(delivered.metadata.groundskeeper.factFailClosed, true);
+    assert.equal(delivered.metadata.llmGrounded.factFailClosed, true);
     assert.notEqual(delivered.content, FINALIZE.lastAssistantMessage);
   }
 });

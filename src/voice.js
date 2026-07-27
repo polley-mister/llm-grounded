@@ -28,8 +28,8 @@ export const DEFAULT_MAX_WORDS = 90;
 
 /**
  * Turns where length is the point. Depth that the operator asked for must never be
- * clipped — a gate that punishes an explanation he requested is worse than no
- * gate, because it teaches him not to ask.
+ * clipped — a gate that punishes an explanation they requested is worse than no
+ * gate, because it teaches them not to ask.
  */
 const DEPTH_REQUESTED = [
   /\b(?:explain|walk me through|talk me through|elaborate|in detail|deep dive|write up|summari[sz]e|compare|contrast|pros and cons|step by step|how (?:do|does|would) (?:i|we|you))\b/i,
@@ -178,7 +178,7 @@ export function revisionText(violations, words, maxWords) {
     parts.push("Cut the opening pleasantry and start with the answer.");
   }
   if (violations.includes("closing-exhortation")) {
-    parts.push("Delete the closing line telling the operator how to feel or what to do with his evening.");
+    parts.push("Delete the closing line telling the operator how to feel or what to do with their evening.");
   }
   if (violations.includes("structure-in-conversation")) {
     parts.push("Drop the headings and bullets; this is a conversation, not a document.");

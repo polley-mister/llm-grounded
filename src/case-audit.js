@@ -13,7 +13,7 @@
 // the owner statement and the retrieved excerpts are exactly the surfaces an
 // injection would arrive on.
 
-export const AUDIT_PURPOSE = "groundskeeper.vault-fact-audit";
+export const AUDIT_PURPOSE = "llm-grounded.vault-fact-audit";
 export const CASE_AGENT_ID = "case";
 
 export const AUDIT_DECISIONS = Object.freeze(["approve", "reject", "insufficient"]);

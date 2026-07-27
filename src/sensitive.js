@@ -86,8 +86,8 @@ export function assessToolSafety(toolName, params) {
 export function blockMessage() {
   // States the boundary without inviting a reformulation that evades it.
   return (
-    "groundskeeper: refused — this search would look up private personal " +
+    "llm-grounded: refused — this search would look up private personal " +
     "information (residence, contact details, or identity by location). " +
-    "Answer without it, or ask the operator what he actually wants to know."
+    "Answer without it, or ask the operator what they actually want to know."
   );
 }

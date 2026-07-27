@@ -900,7 +900,7 @@ export const SATISFYING_TOOLS = {
  * assistant produces, so it sets the register more than any other single
  * string. Process vocabulary ("verify", "invent", "the missing piece") reads
  * as a compliance notice rather than as the agent, and at seven words this matches
- * the length the character actually speaks at.
+ * the length a terse agent actually speaks at.
  */
 export const FAIL_CLOSED_TEXT =
   "I couldn't confirm that. I won't guess.";

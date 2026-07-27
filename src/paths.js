@@ -1,31 +1,46 @@
 // Filesystem locations, resolved rather than hardcoded.
 //
-// Every path this plugin writes to lives under the OpenClaw home directory.
-// That directory is discovered in this order:
+// The core is host-agnostic, so its state directory is too. Resolution order:
 //
-//   1. $OPENCLAW_HOME          — explicit override, used by tests and by
-//                                deployments that place state outside $HOME
-//   2. $HOME/.openclaw         — the ordinary installation
+//   1. $LLM_GROUNDED_HOME              explicit override
+//   2. $XDG_STATE_HOME/llm-grounded    when XDG_STATE_HOME is set
+//   3. $HOME/.local/state/llm-grounded the ordinary default
 //
-// Individual directories remain overridable through plugin config; these are
-// only the defaults, so a fresh install works with no configuration at all.
+// `workspaceDir` is the one OpenClaw-shaped helper here. It is used only to
+// locate prompt files for hashing, is overridable through the `promptFiles`
+// config key, and nothing breaks when the directory does not exist — absent
+// prompt surfaces simply hash as "absent".
+//
+// Every directory is also overridable through plugin config; these are only
+// the defaults, so a fresh install works with no configuration at all.
 
 import os from "node:os";
 import path from "node:path";
 
-/** Root of the OpenClaw installation state. */
-export function openclawHome() {
-  const explicit = process.env.OPENCLAW_HOME;
+/** Root for everything this package writes. */
+export function stateHome() {
+  const explicit = process.env.LLM_GROUNDED_HOME;
   if (explicit && explicit.trim()) return path.resolve(explicit.trim());
-  return path.join(os.homedir(), ".openclaw");
+
+  const xdg = process.env.XDG_STATE_HOME;
+  if (xdg && xdg.trim()) return path.join(path.resolve(xdg.trim()), "llm-grounded");
+
+  return path.join(os.homedir(), ".local", "state", "llm-grounded");
 }
 
-/** Per-plugin variable state: evidence records, telemetry, transaction logs. */
-export function pluginVarDir() {
-  return path.join(openclawHome(), "var", "groundskeeper");
+/** Variable state: evidence records, telemetry, transaction logs. */
+export function varDir() {
+  return stateHome();
 }
 
-/** Prompt surfaces whose wording changes behaviour without touching code. */
+/**
+ * OpenClaw's prompt workspace, for hashing prompt surfaces.
+ *
+ * Only the OpenClaw adapter reaches for this. Other hosts should set the
+ * `promptFiles` config key to whatever their own prompt surfaces are.
+ */
 export function workspaceDir() {
-  return path.join(openclawHome(), "workspace");
+  const home = process.env.OPENCLAW_HOME;
+  const root = home && home.trim() ? path.resolve(home.trim()) : path.join(os.homedir(), ".openclaw");
+  return path.join(root, "workspace");
 }

@@ -1,7 +1,7 @@
 {
   "plugins": {
     "entries": {
-      "groundskeeper": {
+      "llm-grounded": {
         "enabled": true,
         "config": {
           "enabledAgents": ["main", "chat"],

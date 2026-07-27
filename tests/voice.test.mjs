@@ -21,7 +21,7 @@ test("the runaway tail is caught, with the measurement in the instruction", () =
 });
 
 test("requested depth is never clipped", () => {
-  // A gate that punishes an explanation the operator asked for teaches him not to ask.
+  // A gate that punishes an explanation the operator asked for teaches them not to ask.
   for (const ask of [
     "explain how the UPS shutdown ordering works",
     "walk me through the grounding contract",

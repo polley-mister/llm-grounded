@@ -112,7 +112,7 @@ export function isMostlyQuotation(text) {
 }
 
 /**
- * First-person durable assertions: the operator telling us something about his own
+ * First-person durable assertions: the operator telling us something about their own
  * world that is expected to stay true.
  */
 const DURABLE_FIRST_PERSON = [
