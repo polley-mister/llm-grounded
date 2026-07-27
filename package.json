@@ -44,7 +44,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/llm-grounded.git"
+    "url": "git+https://github.com/polley-mister/llm-grounded.git"
   },
   "keywords": [
     "llm",

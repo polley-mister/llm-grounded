@@ -101,7 +101,7 @@ withholds the write or the answer, it does not silently open the gate.
 ## Install
 
 ```bash
-git clone https://github.com/OWNER/llm-grounded.git
+git clone https://github.com/polley-mister/llm-grounded.git
 cd llm-grounded
 npm test                      # 215 tests, no dependencies
 ```
