@@ -21,7 +21,7 @@
           "maxVoiceRevisions": 1,
           "voiceMaxWords": 90,
 
-          "behaviorEpoch": "v1.11.0-advisory",
+          "behaviorEpoch": "v0.1.0-advisory",
           "telemetryRetentionDays": 30,
 
           "factsEnabled": false

@@ -102,6 +102,9 @@ function matchesAny(patterns, text) {
 /**
  * The only decision that may compel a tool.
  *
+ * @param {string} message raw user text for this turn
+ * @param {{prevAssistant?: string}} [context] the previous assistant turn, used
+ *   only to resolve whether this turn is a correction of it
  * @returns {{kind: "web"|"memory"|"arithmetic"|"admin"|null, reason: string}}
  */
 export function hardTrigger(message, context = {}) {

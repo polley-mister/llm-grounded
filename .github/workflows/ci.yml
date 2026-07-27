@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor declared in package.json engines, and current.
+        node: ["22.19", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # There are no runtime dependencies. `npm ci` needs a lockfile that does
+      # not exist and would add nothing, so install only what the type check
+      # needs, and only on the one job that runs it.
+      - run: npm test
+
+  types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install --no-save typescript@^5.6.0
+      # Declarations are committed so a git clone works with no build step.
+      # This fails if they have drifted from the source JSDoc, which is the
+      # failure mode that pattern actually has.
+      - run: npm run check:types
+
+  example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      # The example is the integration guide people copy from. If it stops
+      # running, the documentation is wrong and nothing else would catch it.
+      - run: npm run example
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install --no-save typescript@^5.6.0
+      - run: npm run build:types
+      # Pack, install into an empty project, and import both entry points.
+      # Catches a broken exports map, which `npm test` cannot see because it
+      # imports by relative path.
+      - name: Install the tarball as a consumer would
+        run: |
+          npm pack --pack-destination /tmp
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          echo '{"name":"consumer","type":"module","private":true}' > package.json
+          npm install /tmp/llm-grounded-*.tgz
+          node -e '
+            const core = await import("llm-grounded/core");
+            const entry = await import("llm-grounded");
+            const vectors = (await import("llm-grounded/vectors", { with: { type: "json" } })).default;
+            if (typeof core.hardTrigger !== "function") throw new Error("core entry broken");
+            if (typeof entry.createPlugin !== "function") throw new Error("default entry broken");
+            if (!Array.isArray(vectors.cases ?? vectors)) throw new Error("vectors entry broken");
+            console.log("all three entry points resolve");
+          ' --input-type=module

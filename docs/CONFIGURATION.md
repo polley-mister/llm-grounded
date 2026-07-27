@@ -25,7 +25,7 @@ believing a gate is disabled when it is not.
 | `voiceMaxWords` | 20..400 | `90` | Word count above which a reply is treated as long. Targets the tail, not the median. |
 | `telemetryDir` | string | `$OPENCLAW_HOME/var/llm-grounded/telemetry` | Per-turn telemetry, JSONL, one file per day. **Empty string disables logging.** |
 | `telemetryRetentionDays` | 1..365 | `30` | Days of telemetry retained. Older day files are pruned. |
-| `behaviorEpoch` | string | `"v1.11.0-advisory"` | Label for the behaviour regime that produced a record. Bump on every deliberate behaviour change. |
+| `behaviorEpoch` | string | `"v0.1.0-advisory"` | Label for the behaviour regime that produced a record. Bump on every deliberate behaviour change. |
 | `directSessionPrefixes` | array | `[]` | Session-key prefixes treated as a direct owner conversation. Group and channel keys are refused structurally and cannot be allowed here. |
 | `factsEnabled` | boolean | `false` | Register the guarded fact-commit tool. Off unless explicitly enabled. |
 | `factsAgents` | array | `["main","chat"]` | Agent ids allowed to use the fact tool. Empty array means no agent. |

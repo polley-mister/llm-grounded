@@ -40,7 +40,12 @@ export const VOICE_CODA = [
 export const SELF_DESCRIPTION_RULE =
   "This is a question about the agent, not a request to inspect the system. Answer in character about role, temperament, or practical capability. Do not read workspace files, control files, memory, or tools unless the operator explicitly asks how the system works.";
 
-/** Per-turn requirement text. Only emitted when grounding is required. */
+/**
+ * Per-turn requirement text. Only emitted when grounding is required.
+ *
+ * @param {"web"|"memory"|string|null} kind
+ * @returns {string} empty for any kind that binds no retrieval tier
+ */
 export function requirementText(kind) {
   if (kind === "web") {
     return [
@@ -61,7 +66,14 @@ export function requirementText(kind) {
   return "";
 }
 
-/** Bounded revision instruction handed to before_agent_finalize. */
+/**
+ * Bounded revision instruction handed to the finalize gate.
+ *
+ * @param {"web"|"memory"|string|null} kind
+ * @param {string} userTurn restated so the model does not have to guess what
+ *   it was meant to look up
+ * @returns {string}
+ */
 export function revisionInstruction(kind, userTurn) {
   const tool = kind === "memory" ? "memory_search or wiki_search" : "web_search";
   const question = String(userTurn ?? "").replace(/\s+/g, " ").trim().slice(0, 300);

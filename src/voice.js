@@ -112,6 +112,9 @@ export function depthWasRequested(userMessage) {
 /**
  * Assess one reply against the objective half of the voice rules.
  *
+ * @param {string} replyText the drafted reply, before delivery
+ * @param {{userMessage?: string, maxWords?: number}} [options] the turn that
+ *   prompted it (depth requests suspend the length rule) and the length bound
  * @returns {{ok: boolean, violations: string[], instruction: string}}
  */
 export function assessVoice(replyText, options = {}) {

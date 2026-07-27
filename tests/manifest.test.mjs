@@ -14,7 +14,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(await readFile(path.join(root, "openclaw.plugin.json"), "utf8"));
 const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 
-/** the console's mirror of the shared classification vectors. */
+/** A downstream consumer's mirror of the shared classification vectors. */
 // A downstream consumer may mirror these vectors so the two gates cannot
 // drift. Set MIRRORED_VECTORS to that copy to assert byte-for-byte parity.
 const MC_VECTORS = process.env.MIRRORED_VECTORS ?? "";
@@ -91,11 +91,11 @@ test("register wires exactly the contract hooks, the one tool, and the middlewar
   assert.equal(seen.some((h) => h.name === "tool_result_persist"), false);
 });
 
-test("the console mirrors the classification vectors byte for byte", async (t) => {
+test("a downstream mirror matches the classification vectors byte for byte", async (t) => {
   try {
     await access(MC_VECTORS);
   } catch {
-    t.skip("the console checkout not present");
+    t.skip("no mirrored vectors configured");
     return;
   }
   const mine = await readFile(path.join(root, "tests", "vectors", "grounding-cases.json"), "utf8");
@@ -103,6 +103,6 @@ test("the console mirrors the classification vectors byte for byte", async (t) =
   assert.equal(
     theirs,
     mine,
-    "the plugin gate and the the console gate must be tested against identical vectors",
+    "the plugin gate and any downstream gate must be tested against identical vectors",
   );
 });

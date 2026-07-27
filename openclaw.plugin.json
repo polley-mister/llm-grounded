@@ -2,7 +2,7 @@
   "id": "llm-grounded",
   "name": "llm-grounded",
   "description": "Deterministic grounding and voice contract for OpenClaw agents.",
-  "version": "1.11.0",
+  "version": "0.1.0",
   "activation": {
     "onStartup": true,
     "onCapabilities": [

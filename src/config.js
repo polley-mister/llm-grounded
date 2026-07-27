@@ -35,7 +35,7 @@ export const DEFAULTS = Object.freeze({
   // Names the behaviour regime a record belongs to. Bump on every
   // deliberate behaviour change so analysis can segment by epoch instead of
   // requiring a development freeze.
-  behaviorEpoch: "v1.11.0-advisory",
+  behaviorEpoch: "v0.1.0-advisory",
   telemetryDir: path.join(varDir(), "telemetry"),
   telemetryRetentionDays: 30,
   maxVoiceRevisions: 1,

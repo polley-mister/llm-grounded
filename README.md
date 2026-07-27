@@ -1,5 +1,10 @@
 # llm-grounded
 
+[![CI](https://github.com/polley-mister/llm-grounded/actions/workflows/ci.yml/badge.svg)](https://github.com/polley-mister/llm-grounded/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/llm-grounded)](https://www.npmjs.com/package/llm-grounded)
+[![node](https://img.shields.io/node/v/llm-grounded)](https://nodejs.org)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 A deterministic grounding and voice contract for LLM agents.
 
 llm-grounded sits between a model and its user. It decides, in ordinary code rather than
@@ -103,10 +108,31 @@ withholds the write or the answer, it does not silently open the gate.
 ```bash
 git clone https://github.com/polley-mister/llm-grounded.git
 cd llm-grounded
-npm test                      # 215 tests, no dependencies
+npm test                      # 216 tests, no dependencies
+npm run example               # watch the gates decide, no model required
 ```
 
 Requires Node 22.19+. There are no runtime dependencies and nothing to build.
+
+### See it work first
+
+[`examples/minimal.mjs`](examples/minimal.mjs) is a complete integration in one
+file, with a stubbed model so the output is deterministic and the gates are the
+only thing doing any work. Seven turns: an ordinary reaction that is not gated
+at all, an ignored search request that fails closed, the same request
+satisfied, a near-miss phrasing that stays advisory, a blocked search for a
+private individual, an over-long reply that gets revised, and arithmetic.
+
+```
+> search the web for the tide times at Aberdaron
+  policy      BINDING  hardTrigger=web  (legacy classifier would have said: web)
+  inject      Grounding required for this turn: run web_search before answering...
+  draft       High tide is around 4pm.
+  GROUNDING   unsatisfied, requesting one bounded revision
+  redraft     Still around 4pm, I think.
+  GROUNDING   still unsatisfied after its one retry: failing closed
+  delivered   I couldn't confirm that. I won't guess.
+```
 
 ### As an OpenClaw plugin
 
@@ -142,6 +168,10 @@ adapter.
 The OpenClaw peer dependency is declared optional; `llm-grounded/core` never
 imports it, and `tests/core.test.mjs` asserts that structurally so it stays
 true.
+
+TypeScript declarations ship with the package, generated from the source JSDoc
+and committed so a `git clone` needs no build step. CI regenerates them and
+fails if they have drifted.
 
 ## Configuration you should not skip
 
@@ -180,6 +210,24 @@ suggestion and nothing else.
   cost of each and the shape of the fix
 - [Telemetry](docs/TELEMETRY.md): the record format and how to compute a
   false-positive rate from it
+
+## The routing vectors are reusable on their own
+
+`llm-grounded/vectors` is the labelled dataset the classifier is tested
+against: turns paired with the tier they should route to. It is plain JSON with
+no dependency on any of this code, so it works as a scoring set for whatever
+router you already have.
+
+```js
+import vectors from "llm-grounded/vectors" with { type: "json" };
+for (const c of vectors.cases) {
+  // c.message, c.kind ("web" | "memory" | null), c.correction
+}
+```
+
+Being a labelled set, it says nothing about false-positive rate on natural
+conversation. That number has to come from telemetry on real traffic; see
+[docs/TELEMETRY.md](docs/TELEMETRY.md) for how to compute it.
 
 ## Design notes worth stealing even if you do not use this
 

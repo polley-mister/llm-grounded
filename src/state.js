@@ -99,6 +99,12 @@ const DEFAULT_MAX_EVIDENCE_CHARS = 1200;
 /** Bound on outstanding tool-call bindings. */
 const MAX_PENDING_CALLS = 200;
 
+/**
+ * In-memory, process-local store of per-turn obligations.
+ *
+ * @param {{ttlMs?: number, maxEntries?: number, now?: () => number}} [opts]
+ *   `now` is injectable so tests can advance time without sleeping.
+ */
 export function createGroundingStore(opts = {}) {
   const ttlMs = Number.isFinite(opts.ttlMs) && opts.ttlMs > 0 ? opts.ttlMs : DEFAULT_TTL_MS;
   const maxEntries =
@@ -441,6 +447,9 @@ export function excerptFromToolResult(result, maxChars) {
 /**
  * Whether the turn may release its draft.
  * Missing evidence never releases the draft.
+ *
+ * @param {{kind: string|null, verified?: boolean, failClosed?: boolean}|null} entry
+ * @returns {boolean}
  */
 export function isReleasable(entry) {
   if (!entry) return false;

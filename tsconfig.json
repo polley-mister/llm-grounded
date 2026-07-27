@@ -1,0 +1,16 @@
+{
+  "//": "Declaration generation only. Nothing here compiles or type-checks the source: the package ships plain JavaScript and `npm test` is the source of truth. This exists so TypeScript consumers get real types on a 55-export surface instead of `any`, generated from the JSDoc already in the source rather than hand-maintained alongside it.",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2023",
+    "outDir": "types",
+    "rootDir": "src",
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.js"]
+}

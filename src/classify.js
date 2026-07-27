@@ -744,6 +744,7 @@ export function isSelfReferenceQuestion(message) {
  * Classify one user turn.
  *
  * @param {string} message raw user text for this turn
+ * @param {{prevAssistant?: string, contextualCorrection?: boolean}} [context]
  * @returns {{kind: "web"|"memory"|null, correction: boolean, reason: string}}
  */
 export function classifyGrounding(message, context = {}) {

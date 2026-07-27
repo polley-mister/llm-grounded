@@ -1,22 +1,32 @@
 {
   "name": "llm-grounded",
-  "version": "1.11.0",
+  "version": "0.1.0",
   "private": false,
   "description": "Deterministic grounding and voice contract for LLM agents. Framework-independent core, with an OpenClaw plugin adapter included.",
   "license": "MIT",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
-    ".": "./src/index.js",
-    "./core": "./src/core.js",
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./core": {
+      "types": "./types/core.d.ts",
+      "default": "./src/core.js"
+    },
+    "./vectors": "./tests/vectors/grounding-cases.json",
     "./package.json": "./package.json"
   },
   "files": [
     "openclaw.plugin.json",
     "src",
+    "types",
     "docs",
     "examples",
+    "tests/vectors",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {
@@ -58,6 +68,14 @@
     "plugin"
   ],
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "example": "node examples/minimal.mjs",
+    "build:types": "tsc -p tsconfig.json",
+    "check:types": "tsc -p tsconfig.json --outDir /tmp/llm-grounded-types-check && diff -r types /tmp/llm-grounded-types-check",
+    "prepublishOnly": "npm run build:types && npm test"
+  },
+  "types": "./types/index.d.ts",
+  "devDependencies": {
+    "typescript": "^5.6.0"
   }
 }
