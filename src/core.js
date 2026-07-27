@@ -118,6 +118,23 @@ export {
 } from "./corrections.js";
 
 export {
+  // Two independent outcomes for a fact turn: did the correction land for this
+  // conversation, and did it reach durable storage. Conflating them is what
+  // made a failed write discard an otherwise good answer.
+  resolveOutcomes,
+  persistenceNote,
+  composeWithNote,
+  claimsPersistence,
+} from "./persistence.js";
+
+export {
+  // Holds an accepted correction whose durable write failed, so the next turn
+  // in the same session does not read the stale value back.
+  createSessionOverlay,
+  mergeOverlays,
+} from "./session-overlay.js";
+
+export {
   normalizeForMatch,
   tokenize,
   valuesEquivalent,

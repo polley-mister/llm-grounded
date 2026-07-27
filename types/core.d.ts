@@ -5,6 +5,8 @@ export { assessToolSafety, blockMessage, } from "./sensitive.js";
 export { assessVoice, revisionText as voiceRevisionText, depthWasRequested, DEFAULT_MAX_WORDS, } from "./voice.js";
 export { detectFactStatement, hasValueToken, isMostlyQuotation, } from "./facts-detect.js";
 export { resolveCorrection, } from "./corrections.js";
+export { resolveOutcomes, persistenceNote, composeWithNote, claimsPersistence, } from "./persistence.js";
+export { createSessionOverlay, mergeOverlays, } from "./session-overlay.js";
 export { normalizeForMatch, tokenize, valuesEquivalent, statesValue, looksSecret, } from "./values.js";
 export { createGroundingStore, isReleasable, queryIsUnrelated, excerptFromToolResult, } from "./state.js";
 export { parseConfig, appliesToAgent, factsApplyToAgent, DEFAULTS, CONFIG_JSON_SCHEMA, } from "./config.js";
