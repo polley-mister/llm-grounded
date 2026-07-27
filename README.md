@@ -40,6 +40,8 @@ An agent that can search will search when it shouldn't, and will answer from
 nothing when it should have looked. Prompt instructions ("only search when
 necessary") are advisory to a model in a way that code is not.
 
+There exists classifiers that paid models have, but they are not as flexible when it comes to running a home environment where you may want the LLM to read your obsidian vault for example only on messages that pertain to it. If the LLM is prompted for a math question, it won't be bothered to read your memory vault or do a web search for something it can compute.
+
 The obvious fix, classify the user's turn and then compel the matching tool, is
 the one this project started with, and it is worth being explicit about how
 badly it went. Across 28 ordinary conversational turns:
