@@ -476,7 +476,7 @@ export function createPlugin(deps = {}) {
       const entry = store.get(key);
       if (!entry) return;
 
-      const alreadyFailClosed = isFailClosedText(event?.lastAssistantMessage);
+      const alreadyFailClosed = failedClosedFor(entry, event?.lastAssistantMessage);
       if (!isReleasable(entry) && !alreadyFailClosed) {
         if (entry.revisions < cfg.maxRevisions) {
           store.noteRevision(key);
@@ -824,7 +824,7 @@ export function createPlugin(deps = {}) {
       // authoritative, or a fact note could be appended to a refusal.
       entry: {
         ...entry,
-        failClosed: Boolean(entry?.failClosed) || isFailClosedText(event?.lastAssistantMessage),
+        failClosed: failedClosedFor(entry, event?.lastAssistantMessage),
       },
       draft: event?.lastAssistantMessage ?? "",
       overlayActive,
@@ -857,6 +857,29 @@ export function createPlugin(deps = {}) {
   // telemetry" rather than a failed turn.
   const telemetryPolicy = new Map();
   const telemetryBlocked = new Map();
+
+  /**
+   * Whether this turn failed closed.
+   *
+   * The latch is authoritative. The text comparison exists only because the
+   * requirement asks the model to emit the sentence itself, in which case the
+   * plugin never latches anything — but it is meaningful *only when the turn
+   * actually owed evidence*.
+   *
+   * Under advisory routing most turns owe nothing, and a model that happens to
+   * produce those words is making conversation, not reporting a failure. This
+   * is observed behaviour, not a hypothetical: a turn with no obligation
+   * produced the sentence verbatim, with the phrase absent from its prompt and
+   * from every tool result, and the plugin recorded a grounding failure that
+   * never happened. A fixed string is a fragile control channel, and the metric
+   * it corrupts is the one this package exists to produce.
+   */
+  function failedClosedFor(entry, text) {
+    if (entry?.failClosed) return true;
+    // Nothing was owed, so nothing can have failed.
+    if (entry?.kind == null) return false;
+    return isFailClosedText(text);
+  }
 
   /** Grounding obligation for a turn: hard triggers only. */
   function hardTriggerKind(turn) {
@@ -943,8 +966,10 @@ export function createPlugin(deps = {}) {
       // the handler takes the alreadyFailClosed path and never latches, so the
       // entry says false on a turn that plainly failed closed. Detect the
       // outcome from what shipped, not from how it got there.
-      failedClosed:
-        Boolean(entry?.failClosed) || isFailClosedText(event?.lastAssistantMessage),
+      // Read from the decision rather than the event: the draft is carried on
+      // the decision, while the finalize event reaches here only through the
+      // hook wrapper and is absent on some paths.
+      failedClosed: failedClosedFor(entry, entry?.delivery?.sourceDraft ?? event?.lastAssistantMessage),
       // The two persistence outcomes, the policy that followed from them, and
       // whether a lane was actually seen to emit the result.
       delivery: entry?.delivery ?? null,
