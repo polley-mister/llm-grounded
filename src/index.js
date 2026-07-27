@@ -54,7 +54,7 @@ import {
 import { createGroundingStore, isReleasable } from "./state.js";
 import { assessVoice } from "./voice.js";
 import { readFileSync } from "node:fs";
-import { behaviorIdentity, buildTurnRecord, pruneTurns, writeTurn } from "./telemetry.js";
+import { behaviorIdentity, buildInfo, buildTurnRecord, pruneTurns, writeTurn } from "./telemetry.js";
 import { advisoryText, hardTrigger } from "./explicit.js";
 import { assessToolSafety, blockMessage } from "./sensitive.js";
 
@@ -914,6 +914,9 @@ export function createPlugin(deps = {}) {
     };
     const record = buildTurnRecord(decorated, {
       pluginVersion: PLUGIN_VERSION,
+      pluginId: PLUGIN_ID,
+      implementation: PLUGIN_ID,
+      coreCommit: buildInfo().coreCommit,
       identity: await behaviorIdentity(cfg, { model: ctx?.modelId ?? event?.modelId }),
       policy: k ? telemetryPolicy.get(k) ?? null : null,
       blockedTools: k ? telemetryBlocked.get(k) ?? [] : [],

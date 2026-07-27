@@ -12,16 +12,15 @@
 export declare function behaviorIdentity(cfg: any, extra?: {}): Promise<any>;
 /** Reset between tests, and after any deliberate config change. */
 export declare function resetFingerprint(): void;
-/**
- * Build the record from a completed turn's store entry.
- *
- * Kept pure so it can be unit tested without touching the filesystem, and so
- * the shape is asserted in tests rather than discovered later when Phase 4
- * finds a field missing.
- */
+export declare function buildInfo(read?: any): any;
+/** Test seam: drop the memoised build info. */
+export declare function resetBuildInfo(): void;
 export declare function buildTurnRecord(entry: any, extra?: {}): {
     ts: string;
     pluginVersion: any;
+    pluginId: any;
+    implementation: any;
+    coreCommit: any;
     behaviorEpoch: any;
     promptHash: any;
     rulesetHash: any;

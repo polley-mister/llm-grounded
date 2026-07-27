@@ -22,6 +22,7 @@
 // ---------------------------------------------------------------------------
 
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -151,6 +152,38 @@ export function resetFingerprint() {
  * the shape is asserted in tests rather than discovered later when Phase 4
  * finds a field missing.
  */
+/**
+ * Which build produced a record.
+ *
+ * Read from `build-info.json`, written into the artifact at pack time.
+ * Deliberately not a config key: an operator-supplied commit is a *claim* about
+ * what is deployed, and the reason to record it at all is to know what was
+ * actually running when a turn was measured. A config value drifts silently the
+ * moment someone repoints a path without editing it.
+ *
+ * Absent in a source checkout, which is honest — nothing was packed, so there
+ * is no build to name.
+ */
+let buildInfoCache;
+export function buildInfo(read = readFileSync) {
+  if (buildInfoCache !== undefined) return buildInfoCache;
+  try {
+    const parsed = JSON.parse(read(new URL("../build-info.json", import.meta.url), "utf8"));
+    buildInfoCache = {
+      coreCommit: typeof parsed.commit === "string" ? parsed.commit : null,
+      builtAt: typeof parsed.packedAt === "string" ? parsed.packedAt : null,
+    };
+  } catch {
+    buildInfoCache = { coreCommit: null, builtAt: null };
+  }
+  return buildInfoCache;
+}
+
+/** Test seam: drop the memoised build info. */
+export function resetBuildInfo() {
+  buildInfoCache = undefined;
+}
+
 export function buildTurnRecord(entry, extra = {}) {
   const t = entry?.telemetry ?? {};
   const drafts = Array.isArray(t.drafts) ? t.drafts : [];
@@ -159,6 +192,12 @@ export function buildTurnRecord(entry, extra = {}) {
     // Provenance. Records without these cannot be safely compared across a
     // restart, a prompt edit, or a model change.
     pluginVersion: extra.pluginVersion ?? null,
+    // Which implementation produced this turn, and from which build. Records
+    // written either side of a cutover must be distinguishable without relying
+    // on their timestamps.
+    pluginId: extra.pluginId ?? null,
+    implementation: extra.implementation ?? null,
+    coreCommit: extra.coreCommit ?? null,
     // Behaviour identity, split by surface so analysis can attribute a change.
     behaviorEpoch: extra.identity?.behaviorEpoch ?? null,
     promptHash: extra.identity?.promptHash ?? null,
