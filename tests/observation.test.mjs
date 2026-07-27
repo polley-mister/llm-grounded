@@ -183,6 +183,24 @@ test("agent_end with no terminal lane does not claim the text shipped", async ()
   assert.ok(r.final, "the resolved fallback is still recorded");
 });
 
+test("a byte-identical substitution is not a mutation", () => {
+  // The plugin selects "replace" when the model emits the fail-closed sentence
+  // itself, and substitutes the same string. Counting that as a mutation
+  // inflates the rate with turns where nothing changed.
+  const same = selectTerminalObservation(
+    [{ lane: "transcript", text: "I couldnt confirm that. I wont guess.", external: false }],
+    { action: "replace", originalDraft: "I couldnt confirm that. I wont guess." },
+  );
+  assert.equal(same.deliveryAction, "replace");
+  assert.equal(same.textMutatedByPlugin, false);
+
+  const changed = selectTerminalObservation(
+    [{ lane: "message", text: "Correct. M2. The vault update failed.", external: true }],
+    { action: "annotate", originalDraft: "Correct. M2." },
+  );
+  assert.equal(changed.textMutatedByPlugin, true);
+});
+
 test("the fallback is explicitly unobserved", () => {
   const sel = selectTerminalObservation([], { action: "pass", fallbackText: "x" });
   assert.equal(sel.emissionObserved, false);

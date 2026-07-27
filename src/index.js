@@ -758,6 +758,9 @@ export function createPlugin(deps = {}) {
       const terminal = selectTerminalObservation(entry.deliveryObservations, {
         action: entry.delivery?.action ?? null,
         fallbackText: entry.delivery?.text ?? finalizeEvent?.lastAssistantMessage ?? null,
+        // Compared against what the model actually drafted, so a substitution
+        // that changes nothing is not counted as a change.
+        originalDraft: entry.delivery?.sourceDraft ?? finalizeEvent?.lastAssistantMessage ?? null,
       });
       if (store.claimTerminalRecord(key, terminal.emittedLane)) {
         await recordTurn(cfg, entry, finalizeEvent, ctx, terminal);

@@ -58,17 +58,13 @@ const LANE_PRECEDENCE = ["message", "payload", "transcript"];
  * record never claims to describe something that shipped when nothing did.
  *
  * @param {Array<{lane: string, text: string, external?: boolean}>} observations
- * @param {{fallbackText?: string, action?: string}} [opts]
+ * @param {{fallbackText?: string, action?: string, originalDraft?: string}} [opts]
  */
 export function selectTerminalObservation(observations = [], opts = {}) {
   const seen = Array.isArray(observations) ? observations.filter(Boolean) : [];
   const action = opts.action ?? null;
   const base = {
     deliveryAction: action,
-    // Whether the plugin changed the text, which is a different question from
-    // whether a lane saw it. Conflating the two is what made the first
-    // post-cutover record ambiguous.
-    textMutatedByPlugin: action != null && action !== "pass",
     observedLanes: seen.map((o) => o.lane),
     externalDeliveryObserved: seen.some((o) => o.external),
   };
@@ -80,6 +76,7 @@ export function selectTerminalObservation(observations = [], opts = {}) {
       emittedLane: null,
       externalDeliveryObserved: false,
       terminalTextMismatch: false,
+      textMutatedByPlugin: mutated(opts.fallbackText, opts.originalDraft),
       final: opts.fallbackText ?? null,
     };
   }
@@ -101,8 +98,20 @@ export function selectTerminalObservation(observations = [], opts = {}) {
     emissionObserved: true,
     emittedLane: chosen.lane,
     terminalTextMismatch: distinct.size > 1,
+    // An actual text change, not merely a `replace` action. The plugin can
+    // select `replace` and substitute a string byte-identical to the draft —
+    // it does exactly that when the model emits the fail-closed sentence
+    // itself. Reporting that as a mutation inflates the mutation rate with
+    // turns where nothing was altered.
+    textMutatedByPlugin: mutated(chosen.text, opts.originalDraft),
     final: chosen.text,
   };
+}
+
+/** Whether the delivered text actually differs from what the model drafted. */
+function mutated(finalText, draft) {
+  if (draft == null) return false;
+  return String(finalText ?? "") !== String(draft ?? "");
 }
 
 /**
@@ -127,6 +136,10 @@ export function resolveDelivery({
   const e = entry ?? {};
   const outcomes = resolveOutcomes(e);
   const base = {
+    // The draft this decision was made from. Kept on the decision so a later
+    // mutation check compares against the right text even when the finalize
+    // event is not available to the caller.
+    sourceDraft: String(draft ?? ""),
     correctionOutcome: outcomes.correctionOutcome,
     persistenceOutcome: outcomes.persistenceOutcome,
     persistenceFailureNoted: false,

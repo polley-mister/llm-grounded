@@ -16,7 +16,7 @@ export type DeliveryDecision = {
  * record never claims to describe something that shipped when nothing did.
  *
  * @param {Array<{lane: string, text: string, external?: boolean}>} observations
- * @param {{fallbackText?: string, action?: string}} [opts]
+ * @param {{fallbackText?: string, action?: string, originalDraft?: string}} [opts]
  */
 export declare function selectTerminalObservation(observations?: Array<{
     lane: string;
@@ -25,23 +25,24 @@ export declare function selectTerminalObservation(observations?: Array<{
 }>, opts?: {
     fallbackText?: string;
     action?: string;
+    originalDraft?: string;
 }): {
     deliveryAction: string | null;
-    textMutatedByPlugin: boolean;
     observedLanes: string[];
     emissionObserved: boolean;
     emittedLane: null;
     externalDeliveryObserved: boolean;
     terminalTextMismatch: boolean;
+    textMutatedByPlugin: boolean;
     final: string | null;
 } | {
     deliveryAction: string | null;
-    textMutatedByPlugin: boolean;
     observedLanes: string[];
     externalDeliveryObserved: boolean;
     emissionObserved: boolean;
     emittedLane: string;
     terminalTextMismatch: boolean;
+    textMutatedByPlugin: boolean;
     final: string;
 };
 /**
