@@ -42,10 +42,40 @@ export const JOIN_STATUSES = Object.freeze([
   "integrity_failure",
   "partially_missing",
   "evidence_expired",
+  "extraction_pending",
+  "extraction_lost",
   "claim_extraction_abstained",
   "no_evidence",
   "complete",
 ]);
+
+/**
+ * How a turn's extraction resolved.
+ *
+ * `pending` and `lost` are the two the settlement window exists to separate.
+ * Extraction runs after delivery, so a turn record can be written and read
+ * before the extraction store has caught up — and an inspector that read that
+ * as loss would report a completion failure on every turn it happened to catch
+ * mid-flight. Past the window, an extraction that announced itself and never
+ * finished is a real loss: the process died holding it.
+ */
+export const EXTRACTION_RESOLUTIONS = Object.freeze([
+  "complete",
+  "pending",
+  "lost",
+  "missing",
+  "expired",
+  "unreadable",
+  "not_run",
+]);
+
+/**
+ * How long after a turn an unwritten extraction is still merely late.
+ *
+ * Sixty seconds against a twenty-second extraction timeout: three times the
+ * ceiling, so a record that has not appeared is not simply slow.
+ */
+export const DEFAULT_SETTLEMENT_MS = 60_000;
 
 /** How one referenced excerpt resolved. */
 export const EVIDENCE_RESOLUTIONS = Object.freeze([
@@ -134,9 +164,88 @@ function joinStatusFor(evidence, extraction, referenced) {
   if (has("corrupt") || has("unreadable")) return "integrity_failure";
   if (has("missing")) return "partially_missing";
   if (has("expired")) return "evidence_expired";
+  // An extraction that announced itself and never finished outranks an
+  // abstention: abstention is an answer, this is the absence of one.
+  if (extraction?.resolution === "lost" || extraction?.resolution === "unreadable") return "extraction_lost";
+  if (extraction?.resolution === "pending") return "extraction_pending";
   if (extraction?.status === "abstained") return "claim_extraction_abstained";
   if (referenced === 0) return "no_evidence";
   return "complete";
+}
+
+/**
+ * Resolve the turn's extraction record, if it claimed to have one.
+ *
+ * A turn that was never eligible has nothing to resolve and says `not_run`.
+ * That is not a gap.
+ */
+async function resolveExtraction(turn, { read, now, settlementMs, prunedBefore }) {
+  const id = turn?.claimExtractionId ?? null;
+  const declared = turn?.claimExtractionStatus ?? null;
+
+  if (!id) {
+    return {
+      extractionId: null,
+      resolution: declared && declared !== "skipped" ? "missing" : "not_run",
+      status: declared ?? "not_run",
+      skipReason: turn?.claimExtractionSkipReason ?? null,
+      claims: [],
+    };
+  }
+  if (typeof read !== "function") {
+    // No reader supplied: report what the turn said, and do not pretend to have
+    // checked the store.
+    return { extractionId: id, resolution: "not_run", status: declared, claims: [] };
+  }
+
+  let out;
+  try {
+    out = await read(id);
+  } catch {
+    return { extractionId: id, resolution: "unreadable", status: declared, claims: [] };
+  }
+
+  if (!out?.ok) {
+    if (out?.reason !== "missing") {
+      return { extractionId: id, resolution: "unreadable", status: declared, claims: [] };
+    }
+    if (prunedBefore !== null) {
+      return { extractionId: id, resolution: "expired", status: declared, claims: [] };
+    }
+    const turnAt = parseTime(turn?.ts);
+    const settled = turnAt === null || now - turnAt > settlementMs;
+    return { extractionId: id, resolution: settled ? "missing" : "pending", status: declared, claims: [] };
+  }
+
+  const record = out.record ?? {};
+  // Written, announced, and never finished. The process did not survive it.
+  if (record.status === "scheduled") {
+    const scheduledAt = parseTime(record.scheduledAt);
+    const settled = scheduledAt === null || now - scheduledAt > settlementMs;
+    return {
+      extractionId: id,
+      resolution: settled ? "lost" : "pending",
+      status: "scheduled",
+      scheduledAt: record.scheduledAt ?? null,
+      claims: [],
+    };
+  }
+
+  return {
+    extractionId: id,
+    resolution: "complete",
+    status: record.status ?? declared,
+    abstentionReason: record.abstentionReason ?? null,
+    scheduledAt: record.scheduledAt ?? null,
+    startedAt: record.startedAt ?? null,
+    completedAt: record.completedAt ?? null,
+    lagMs: record.lagMs ?? null,
+    latencyMs: record.latencyMs ?? null,
+    claimCount: record.claimCount ?? 0,
+    materialClaimCount: record.materialClaimCount ?? 0,
+    provenance: record.provenance ?? null,
+    claims: record.claims ?? [],
+  };
 }
 
 /**
@@ -170,15 +279,20 @@ export async function inspectTurn(turn, opts = {}) {
     evidence.push(await resolveEvidence(id, { read, prunedBefore }));
   }
 
+  const settlementMs = Number.isFinite(opts.settlementMs) ? opts.settlementMs : DEFAULT_SETTLEMENT_MS;
   const extraction = opts.extraction
     ? {
+        resolution: "complete",
         status: opts.extraction.status ?? "not_run",
         claims: opts.extraction.claims ?? [],
         ...(opts.extraction.abstentionReason ? { abstentionReason: opts.extraction.abstentionReason } : {}),
       }
-    // Extraction is offline-only and not part of a turn record, so a turn
-    // inspected without one has not abstained — it was never asked.
-    : { status: "not_run", claims: [] };
+    : await resolveExtraction(turn, {
+        read: opts.readExtraction,
+        now,
+        settlementMs,
+        prunedBefore,
+      });
 
   const counts = Object.fromEntries(
     EVIDENCE_RESOLUTIONS.map((r) => [r, evidence.filter((e) => e.resolution === r).length]),
@@ -205,7 +319,14 @@ export async function inspectTurn(turn, opts = {}) {
     draft: turn?.draft ?? null,
     final: turn?.final ?? null,
 
-    claimExtraction: extraction,
+    // What the turn said about extraction, and what the store actually holds.
+    // Claim text is not copied here, for the same reason excerpt text is not:
+    // this is a join, not a second copy of a store with its own retention.
+    claimExtraction: {
+      ...extraction,
+      claims: undefined,
+      claimCount: extraction.claimCount ?? (extraction.claims ?? []).length,
+    },
 
     evidence,
     evidenceCounts: counts,
@@ -239,15 +360,25 @@ export async function inspectTurns(turns, opts = {}) {
 /** Counts by join status, for a corpus summary. */
 export function summarizeInspections(inspections) {
   const byStatus = Object.fromEntries(JOIN_STATUSES.map((s) => [s, 0]));
+  const byExtraction = Object.fromEntries(EXTRACTION_RESOLUTIONS.map((s) => [s, 0]));
   const byTraffic = {};
   let referenced = 0;
   let resolved = 0;
   for (const i of inspections ?? []) {
     if (i?.joinStatus in byStatus) byStatus[i.joinStatus] += 1;
+    const ex = i?.claimExtraction?.resolution;
+    if (ex in byExtraction) byExtraction[ex] += 1;
     const cls = i?.trafficClass ?? "unknown";
     byTraffic[cls] = (byTraffic[cls] ?? 0) + 1;
     referenced += i?.evidenceReferenced ?? 0;
     resolved += i?.evidenceCounts?.resolved ?? 0;
   }
-  return { turns: (inspections ?? []).length, byStatus, byTraffic, evidenceReferenced: referenced, evidenceResolved: resolved };
+  return {
+    turns: (inspections ?? []).length,
+    byStatus,
+    byExtraction,
+    byTraffic,
+    evidenceReferenced: referenced,
+    evidenceResolved: resolved,
+  };
 }

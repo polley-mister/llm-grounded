@@ -14,6 +14,7 @@ export { createGroundingStore, isReleasable, queryIsUnrelated, excerptFromToolRe
 export { parseConfig, appliesToAgent, factsApplyToAgent, DEFAULTS, CONFIG_JSON_SCHEMA } from "./config.js";
 export { stateHome, varDir } from "./paths.js";
 export { resolveTrafficClass, isResolvedTraffic, isTrafficClass, TRAFFIC_CLASSES } from "./traffic.js";
+export { shadowMetrics, reviewSample } from "./shadow-metrics.js";
 export { runShadowExtraction, buildShadowRecord, writeShadowRecord, pruneShadowExtractions, CLAIM_SHADOW_SCHEMA_VERSION, SHADOW_SKIP_REASONS } from "./claim-shadow.js";
 export { inspectTurn, inspectTurns, summarizeInspections, INSPECTION_SCHEMA_VERSION, JOIN_STATUSES, EVIDENCE_RESOLUTIONS } from "./inspection.js";
 export { buildTurnRecord, writeTurn, pruneTurns, behaviorIdentity, resetFingerprint } from "./telemetry.js";

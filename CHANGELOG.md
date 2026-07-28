@@ -3,6 +3,64 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.3.2
+
+Operational measurement. No change to extraction behaviour, no enforcement, no
+retrieval, no support labels. This release exists so the shadow observation
+period produces numbers that can be trusted, and so the next deployment cannot
+repeat 0.3.0.
+
+### Added
+
+- `scripts/deploy.py`. The check that caught the 0.3.0 outage, automated. The
+  invariant it enforces:
+
+```
+a successful gateway restart is not a successful plugin deployment
+```
+
+  A gateway that comes up without `llm-grounded` is a failed deployment even
+  though the process is healthy. Two gates, protecting different boundaries:
+  a preflight that registers the packed artifact against the exact config about
+  to be written, before anything is changed; and a post-restart gate that asks
+  the running host what it actually loaded — process active, plugin present,
+  status `loaded`, activated, version matching, artifact path matching, and the
+  plugin's own startup line reporting the requested epoch. Any failure restores
+  the previous artifact path *and* the previous config keys in one write, since
+  the previous build refuses a config carrying keys it does not know.
+  Verified by reintroducing the 0.3.0 defect into a scratch copy: preflight
+  refuses it and changes nothing.
+- Extraction lifecycle stamps: `claimExtractionScheduledAt`, `StartedAt`,
+  `CompletedAt`, `LagMs`. Lag is queueing and setup, which is a different number
+  from how long the model took, and if it grows it points somewhere else
+  entirely.
+- **A scheduled record is written before the model is called**, and completed in
+  place afterwards. This costs a second small local write per extraction and is
+  the only way a completion loss can be seen at all: if the process dies
+  mid-call, `agent_end` never finishes, so no turn record is written either and
+  nothing else would record that an extraction had been attempted.
+- Inspection separates `pending` from `lost`. Extraction runs after delivery, so
+  a turn record can be written and read before its extraction record exists;
+  inside a settlement window (60 s by default, configurable) that is `pending`,
+  not loss. A scheduled record past the window is `lost`. Join statuses
+  `extraction_pending` and `extraction_lost` were added, and a lost extraction
+  outranks an abstention — abstention is an answer, this is the absence of one.
+- `src/shadow-metrics.js` and `scripts/shadow-report.mjs`. The observation
+  numbers by traffic class and overall: eligible turns, scheduled, completed,
+  completion rate, pending or lost, status breakdown, abstention reasons,
+  malformed output, provider errors, timeouts, claims and material claims per
+  turn, claims by epistemic type, latency p50/p90/p95/p99, lag percentiles,
+  tokens, and cost. Coverage is measured over *eligible* turns only: a heartbeat
+  correctly skipped is not a missed extraction, and counting it would make the
+  completion rate a function of the heartbeat interval. Cost is null unless
+  prices are supplied — a cost table computed from a guessed rate is worse than
+  no cost table — and reports how many extractions it could and could not see
+  usage for.
+- A stratified review sampler, because the interesting groups are rare: an
+  all-material extraction and a stored-personal claim would each appear once or
+  twice in fifty random turns, and those are the two the materiality judge is
+  most likely to be wrong about. It reports which groups it could not fill.
+
 ## 0.3.1
 
 Repair. 0.3.0 did not register.

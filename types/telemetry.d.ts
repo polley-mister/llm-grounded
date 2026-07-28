@@ -70,6 +70,10 @@ export function buildTurnRecord(entry: any, extra?: {}): {
     claimExtractionSkipReason: any;
     claimExtractionAbstentionReason: any;
     claimExtractionLatencyMs: any;
+    claimExtractionScheduledAt: any;
+    claimExtractionStartedAt: any;
+    claimExtractionCompletedAt: any;
+    claimExtractionLagMs: any;
     claimCount: any;
     materialClaimCount: any;
     claimSupported: any;

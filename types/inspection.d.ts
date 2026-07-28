@@ -36,9 +36,71 @@ export function inspectTurn(turn: object, opts?: {
     draft: any;
     final: any;
     claimExtraction: {
-        abstentionReason?: string;
+        claims: any;
+        claimCount: any;
+        extractionId: any;
+        resolution: string;
+        status: any;
+        skipReason: any;
+        scheduledAt?: undefined;
+        abstentionReason?: undefined;
+        startedAt?: undefined;
+        completedAt?: undefined;
+        lagMs?: undefined;
+        latencyMs?: undefined;
+        materialClaimCount?: undefined;
+        provenance?: undefined;
+    } | {
+        claims: any;
+        claimCount: any;
+        extractionId: any;
+        resolution: string;
+        status: any;
+        skipReason?: undefined;
+        scheduledAt?: undefined;
+        abstentionReason?: undefined;
+        startedAt?: undefined;
+        completedAt?: undefined;
+        lagMs?: undefined;
+        latencyMs?: undefined;
+        materialClaimCount?: undefined;
+        provenance?: undefined;
+    } | {
+        claims: any;
+        claimCount: any;
+        extractionId: any;
+        resolution: string;
         status: string;
-        claims: any[];
+        scheduledAt: any;
+        skipReason?: undefined;
+        abstentionReason?: undefined;
+        startedAt?: undefined;
+        completedAt?: undefined;
+        lagMs?: undefined;
+        latencyMs?: undefined;
+        materialClaimCount?: undefined;
+        provenance?: undefined;
+    } | {
+        claims: any;
+        claimCount: any;
+        extractionId: any;
+        resolution: string;
+        status: any;
+        abstentionReason: any;
+        scheduledAt: any;
+        startedAt: any;
+        completedAt: any;
+        lagMs: any;
+        latencyMs: any;
+        materialClaimCount: any;
+        provenance: any;
+        skipReason?: undefined;
+    } | {
+        claims: any;
+        claimCount: any;
+        abstentionReason?: string;
+        resolution: string;
+        status: string;
     };
     evidence: ({
         evidenceId: any;
@@ -105,9 +167,71 @@ export function inspectTurns(turns: any, opts?: {}): Promise<{
     draft: any;
     final: any;
     claimExtraction: {
-        abstentionReason?: string;
+        claims: any;
+        claimCount: any;
+        extractionId: any;
+        resolution: string;
+        status: any;
+        skipReason: any;
+        scheduledAt?: undefined;
+        abstentionReason?: undefined;
+        startedAt?: undefined;
+        completedAt?: undefined;
+        lagMs?: undefined;
+        latencyMs?: undefined;
+        materialClaimCount?: undefined;
+        provenance?: undefined;
+    } | {
+        claims: any;
+        claimCount: any;
+        extractionId: any;
+        resolution: string;
+        status: any;
+        skipReason?: undefined;
+        scheduledAt?: undefined;
+        abstentionReason?: undefined;
+        startedAt?: undefined;
+        completedAt?: undefined;
+        lagMs?: undefined;
+        latencyMs?: undefined;
+        materialClaimCount?: undefined;
+        provenance?: undefined;
+    } | {
+        claims: any;
+        claimCount: any;
+        extractionId: any;
+        resolution: string;
         status: string;
-        claims: any[];
+        scheduledAt: any;
+        skipReason?: undefined;
+        abstentionReason?: undefined;
+        startedAt?: undefined;
+        completedAt?: undefined;
+        lagMs?: undefined;
+        latencyMs?: undefined;
+        materialClaimCount?: undefined;
+        provenance?: undefined;
+    } | {
+        claims: any;
+        claimCount: any;
+        extractionId: any;
+        resolution: string;
+        status: any;
+        abstentionReason: any;
+        scheduledAt: any;
+        startedAt: any;
+        completedAt: any;
+        lagMs: any;
+        latencyMs: any;
+        materialClaimCount: any;
+        provenance: any;
+        skipReason?: undefined;
+    } | {
+        claims: any;
+        claimCount: any;
+        abstentionReason?: string;
+        resolution: string;
+        status: string;
     };
     evidence: ({
         evidenceId: any;
@@ -159,6 +283,9 @@ export function summarizeInspections(inspections: any): {
     byStatus: {
         [k: string]: number;
     };
+    byExtraction: {
+        [k: string]: number;
+    };
     byTraffic: {};
     evidenceReferenced: number;
     evidenceResolved: number;
@@ -173,5 +300,23 @@ export const INSPECTION_SCHEMA_VERSION: "claim-evidence-inspection-v1";
  * measured outcome, and a corrupt store is a fault in the instrument.
  */
 export const JOIN_STATUSES: readonly string[];
+/**
+ * How a turn's extraction resolved.
+ *
+ * `pending` and `lost` are the two the settlement window exists to separate.
+ * Extraction runs after delivery, so a turn record can be written and read
+ * before the extraction store has caught up — and an inspector that read that
+ * as loss would report a completion failure on every turn it happened to catch
+ * mid-flight. Past the window, an extraction that announced itself and never
+ * finished is a real loss: the process died holding it.
+ */
+export const EXTRACTION_RESOLUTIONS: readonly string[];
+/**
+ * How long after a turn an unwritten extraction is still merely late.
+ *
+ * Sixty seconds against a twenty-second extraction timeout: three times the
+ * ceiling, so a record that has not appeared is not simply slow.
+ */
+export const DEFAULT_SETTLEMENT_MS: 60000;
 /** How one referenced excerpt resolved. */
 export const EVIDENCE_RESOLUTIONS: readonly string[];

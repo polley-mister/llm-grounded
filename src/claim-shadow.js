@@ -42,6 +42,26 @@ export const SHADOW_SKIP_REASONS = Object.freeze([
 
 const REAL_FS = Object.freeze({ mkdir, writeFile });
 
+/**
+ * Statuses a stored extraction record can carry.
+ *
+ * `scheduled` is written *before* the model call and overwritten when it
+ * returns. That costs a second small local write per extraction and buys the
+ * only way to see a completion loss: if the gateway is restarted or the process
+ * dies mid-call, the turn record is never written either — `agent_end` had not
+ * finished — so nothing in telemetry would record that an extraction had been
+ * started at all. A scheduled record left on disk is that evidence.
+ *
+ * Without it, a killed extraction is indistinguishable from a turn that was
+ * never eligible, and completion rate cannot be measured.
+ */
+export const SHADOW_RECORD_STATUSES = Object.freeze([
+  "scheduled",
+  "extracted",
+  "no_claims",
+  "abstained",
+]);
+
 /** A skip: extraction never ran, and nothing was written. */
 function skipped(reason, detail = null) {
   return { ran: false, extractionId: null, status: "skipped", skipReason: reason, detail };
@@ -95,6 +115,35 @@ export async function runShadowExtraction(input) {
 
     if (!llm || typeof llm.complete !== "function") return skipped("no_llm");
 
+    // The id is minted here, not at the end, because the scheduled record and
+    // the completed one have to be the same file.
+    const extractionId = `cx_${randomUUID()}`;
+    const scheduledAt = now();
+    const fsOps = input.fsOps ?? REAL_FS;
+
+    // Announce the intent before spending anything on it. If this process does
+    // not survive the call, this file is the only thing that will say the
+    // extraction was ever attempted.
+    await writeShadowRecord(
+      cfg.claimExtractionDir,
+      {
+        schemaVersion: CLAIM_SHADOW_SCHEMA_VERSION,
+        extractionId,
+        status: "scheduled",
+        scheduledAt: new Date(scheduledAt).toISOString(),
+        startedAt: null,
+        completedAt: null,
+        internalTurnId: entry?.turnId ?? null,
+        turnId: entry?.runId ?? entry?.sessionKey ?? null,
+        trafficClass: entry?.traffic?.trafficClass ?? null,
+        behaviorEpoch: cfg?.behaviorEpoch ?? null,
+        claimSupported: null,
+        supportLabels: [],
+      },
+      logger,
+      fsOps,
+    );
+
     const startedAt = now();
     const extraction = await extract(
       { draft, userTurn: typeof userTurn === "string" ? userTurn : "" },
@@ -105,19 +154,30 @@ export async function runShadowExtraction(input) {
         agentId: cfg.claimExtractionAgentId ?? null,
       },
     );
-    const latencyMs = now() - startedAt;
+    const completedAt = now();
+    const latencyMs = completedAt - startedAt;
 
-    const record = buildShadowRecord({ cfg, entry, extraction, draft, latencyMs, now });
-    const written = await writeShadowRecord(cfg.claimExtractionDir, record, logger, input.fsOps ?? REAL_FS);
+    const record = buildShadowRecord({
+      cfg, entry, extraction, draft, latencyMs, now,
+      extractionId, scheduledAt, startedAt, completedAt,
+    });
+    const written = await writeShadowRecord(cfg.claimExtractionDir, record, logger, fsOps);
     if (!written.ok) {
       logger?.warn?.(`llmGrounded: claim extraction record not stored: ${written.reason}`);
       // The extraction happened; only the record did not. Say both.
       return {
         ran: true,
-        extractionId: null,
+        // The id is still reported: the scheduled record may well be on disk
+        // even though the completed one is not, and an inspector needs to be
+        // able to find it.
+        extractionId,
         status: extraction.status,
         skipReason: null,
         storeFailed: true,
+        scheduledAt,
+        startedAt,
+        completedAt,
+        lagMs: startedAt - scheduledAt,
         latencyMs,
         claimCount: record.claimCount,
         materialClaimCount: record.materialClaimCount,
@@ -131,6 +191,13 @@ export async function runShadowExtraction(input) {
       status: extraction.status,
       skipReason: null,
       storeFailed: false,
+      scheduledAt,
+      startedAt,
+      completedAt,
+      // How long the turn waited between deciding to extract and the call
+      // beginning. Distinct from latency: this is queueing and setup, and if it
+      // grows it points somewhere entirely different.
+      lagMs: startedAt - scheduledAt,
       latencyMs,
       claimCount: record.claimCount,
       materialClaimCount: record.materialClaimCount,
@@ -153,12 +220,23 @@ export async function runShadowExtraction(input) {
  * material or not. Both live here rather than in telemetry, which is the store
  * that must stay free of verbatim content.
  */
-export function buildShadowRecord({ cfg, entry, extraction, draft, latencyMs, now = () => Date.now() }) {
+export function buildShadowRecord({
+  cfg, entry, extraction, draft, latencyMs, now = () => Date.now(),
+  extractionId, scheduledAt, startedAt, completedAt,
+}) {
   const claims = extraction?.status === "extracted" ? extraction.claims ?? [] : [];
+  const stamp = (v) => (Number.isFinite(v) ? new Date(v).toISOString() : null);
   return {
     schemaVersion: CLAIM_SHADOW_SCHEMA_VERSION,
-    extractionId: `cx_${randomUUID()}`,
+    extractionId: extractionId ?? `cx_${randomUUID()}`,
     extractedAt: new Date(now()).toISOString(),
+
+    // The lifecycle, so "not written yet" and "never finished" are different
+    // observations rather than the same absence.
+    scheduledAt: stamp(scheduledAt),
+    startedAt: stamp(startedAt),
+    completedAt: stamp(completedAt),
+    lagMs: Number.isFinite(scheduledAt) && Number.isFinite(startedAt) ? startedAt - scheduledAt : null,
 
     // Joins to the turn. The internal id is the principal one; the host-derived
     // key is kept because evidence files reference that form.

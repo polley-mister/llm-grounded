@@ -224,9 +224,86 @@ test("an unwritable extraction store does not disturb the turn either", async ()
   });
   await runTurn(p, cfg);
   assert.equal(p.__turns.length, 1);
-  // The extraction happened; only the record did not. Both are reported.
+  // The extraction happened; only the completed record did not. The id is still
+  // reported, because the scheduled record may well be on disk and an inspector
+  // has to be able to find it.
   assert.equal(p.__turns[0].claimExtractionStatus, "extracted");
-  assert.equal(p.__turns[0].claimExtractionId, null);
+  assert.match(p.__turns[0].claimExtractionId, /^cx_/);
+});
+
+test("a scheduled record is written before the model is called", async () => {
+  // The only evidence a killed extraction leaves. agent_end never finishes, so
+  // no turn record is written either — without this file, a completion loss is
+  // indistinguishable from a turn that was never eligible.
+  const d = await dir();
+  const cfg = config(d);
+  let duringCall = null;
+  let scheduled = null;
+  const llm = {
+    calls: [],
+    async complete(req) {
+      this.calls.push(req);
+      // Read the contents here, not the names: by the time the turn returns the
+      // same file has been completed in place.
+      duringCall = await files(d);
+      scheduled = JSON.parse(await readFile(path.join(d, duringCall[0]), "utf8"));
+      return { text: JSON.stringify({ claims: [CLAIM] }), finishReason: "stop", provider: "test", model: "test-flash" };
+    },
+  };
+  const p = plugin(cfg, llm);
+  await runTurn(p, cfg);
+
+  assert.equal(duringCall.length, 1, "the record existed while the call was in flight");
+  assert.equal(scheduled.status, "scheduled");
+  assert.ok(scheduled.scheduledAt, "and says when it was scheduled");
+  assert.equal(scheduled.startedAt, null);
+  assert.equal(scheduled.completedAt, null);
+  assert.equal(scheduled.claimSupported, null);
+
+  // Then the same file, completed. One id, not two.
+  const after = await files(d);
+  assert.equal(after.length, 1, "the scheduled record is completed in place");
+  assert.equal(after[0], duringCall[0]);
+  const done = await load(d, after[0]);
+  assert.equal(done.status, "extracted");
+  assert.equal(done.extractionId, scheduled.extractionId);
+  await rm(d, { recursive: true, force: true });
+});
+
+test("the lifecycle stamps are recorded, and lag is separable from latency", async () => {
+  // Queueing and setup is a different number from how long the model took, and
+  // if it grows it points somewhere entirely different.
+  const d = await dir();
+  const cfg = config(d);
+  const p = plugin(cfg, extractor([CLAIM]));
+  await runTurn(p, cfg);
+
+  const rec = await load(d, (await files(d))[0]);
+  assert.ok(rec.scheduledAt && rec.startedAt && rec.completedAt);
+  assert.ok(Date.parse(rec.scheduledAt) <= Date.parse(rec.startedAt));
+  assert.ok(Date.parse(rec.startedAt) <= Date.parse(rec.completedAt));
+  assert.ok(Number.isFinite(rec.lagMs) && rec.lagMs >= 0);
+  assert.ok(Number.isFinite(rec.latencyMs) && rec.latencyMs >= 0);
+
+  const turn = p.__turns[0];
+  assert.ok(turn.claimExtractionScheduledAt);
+  assert.ok(turn.claimExtractionCompletedAt);
+  assert.ok(Number.isFinite(turn.claimExtractionLagMs));
+  await rm(d, { recursive: true, force: true });
+});
+
+test("an abstention still completes its record rather than leaving it scheduled", async () => {
+  // Otherwise every provider outage would read as a completion loss.
+  const d = await dir();
+  const cfg = config(d);
+  const p = plugin(cfg, { async complete() { throw new Error("provider down"); } });
+  await runTurn(p, cfg);
+
+  const rec = await load(d, (await files(d))[0]);
+  assert.equal(rec.status, "abstained");
+  assert.equal(rec.abstentionReason, "provider_error");
+  assert.ok(rec.completedAt, "a finished failure is finished");
+  await rm(d, { recursive: true, force: true });
 });
 
 test("a model that returns nonsense abstains rather than inventing claims", async () => {

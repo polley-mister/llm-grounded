@@ -209,6 +209,14 @@ export {
 // without a limit.
 
 export {
+  // The shadow observation numbers, computed from the telemetry and extraction
+  // stores. Arithmetic only: nothing is estimated, and anything that cannot be
+  // computed from what is on disk is null rather than zero.
+  shadowMetrics,
+  reviewSample,
+} from "./shadow-metrics.js";
+
+export {
   // Claim extraction in production shadow mode: runs after delivery, writes to
   // its own store, and has no authority over anything. Provider-neutral — the
   // model is injected, and a model problem is an outcome rather than a throw.

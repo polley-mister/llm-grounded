@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 
 import {
+  DEFAULT_SETTLEMENT_MS,
+  EXTRACTION_RESOLUTIONS,
   INSPECTION_SCHEMA_VERSION,
   JOIN_STATUSES,
   inspectTurn,
@@ -274,4 +276,171 @@ test("many turns summarize by status and traffic class", async () => {
   assert.equal(summary.byTraffic.heartbeat, 1);
   assert.equal(summary.evidenceReferenced, 2);
   assert.equal(summary.evidenceResolved, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Extraction: late is not lost
+// ---------------------------------------------------------------------------
+
+/** A store of extraction records, keyed by id. */
+function extractionStore(records) {
+  const byId = new Map(records.map((r) => [r.extractionId, r]));
+  return async (id) => (byId.has(id) ? { ok: true, record: byId.get(id) } : { ok: false, reason: "missing" });
+}
+
+const extracted = (over = {}) => ({
+  extractionId: "cx_1",
+  status: "extracted",
+  scheduledAt: "2026-07-28T12:00:00.000Z",
+  startedAt: "2026-07-28T12:00:01.000Z",
+  completedAt: "2026-07-28T12:00:05.000Z",
+  lagMs: 1000,
+  latencyMs: 4000,
+  claimCount: 3,
+  materialClaimCount: 2,
+  claims: [{ surfaceText: "The price is $4,000." }],
+  ...over,
+});
+
+const withExtraction = (over = {}) => turn({
+  claimExtractionId: "cx_1",
+  claimExtractionStatus: "extracted",
+  evidenceIds: [],
+  ...over,
+});
+
+test("a turn that never scheduled an extraction reports not_run, not a gap", async () => {
+  const out = await inspectTurn(turn({ evidenceIds: [], claimExtractionStatus: "skipped", claimExtractionSkipReason: "traffic_class_excluded" }), {
+    readEvidence: store([]),
+    readExtraction: extractionStore([]),
+    now: () => NOW,
+  });
+  assert.equal(out.claimExtraction.resolution, "not_run");
+  assert.equal(out.joinStatus, "no_evidence");
+});
+
+test("an extraction record that is simply late is pending, not missing", async () => {
+  // The record is written after delivery, so an inspector can easily read a
+  // turn before its extraction lands. Calling that a loss would report a
+  // completion failure on every turn caught mid-flight.
+  const justNow = new Date(NOW - 5_000).toISOString();
+  const out = await inspectTurn(withExtraction({ ts: justNow }), {
+    readEvidence: store([]),
+    readExtraction: extractionStore([]),
+    now: () => NOW,
+  });
+  assert.equal(out.claimExtraction.resolution, "pending");
+  assert.equal(out.joinStatus, "extraction_pending");
+});
+
+test("past the settlement window an absent extraction is missing", async () => {
+  const old = new Date(NOW - DEFAULT_SETTLEMENT_MS - 60_000).toISOString();
+  const out = await inspectTurn(withExtraction({ ts: old }), {
+    readEvidence: store([]),
+    readExtraction: extractionStore([]),
+    now: () => NOW,
+  });
+  assert.equal(out.claimExtraction.resolution, "missing");
+});
+
+test("the settlement window is configurable", async () => {
+  const ts = new Date(NOW - 30_000).toISOString();
+  const late = await inspectTurn(withExtraction({ ts }), {
+    readEvidence: store([]), readExtraction: extractionStore([]), settlementMs: 60_000, now: () => NOW,
+  });
+  assert.equal(late.claimExtraction.resolution, "pending");
+
+  const impatient = await inspectTurn(withExtraction({ ts }), {
+    readEvidence: store([]), readExtraction: extractionStore([]), settlementMs: 1_000, now: () => NOW,
+  });
+  assert.equal(impatient.claimExtraction.resolution, "missing");
+});
+
+test("an extraction that announced itself and never finished is lost", async () => {
+  // The process died holding it. This is the case the scheduled-first write
+  // exists to make visible: the turn record was never written either, so
+  // nothing else would say the extraction had been attempted.
+  const scheduled = { extractionId: "cx_1", status: "scheduled", scheduledAt: new Date(NOW - 300_000).toISOString() };
+  const out = await inspectTurn(withExtraction(), {
+    readEvidence: store([]),
+    readExtraction: extractionStore([scheduled]),
+    now: () => NOW,
+  });
+  assert.equal(out.claimExtraction.resolution, "lost");
+  assert.equal(out.joinStatus, "extraction_lost");
+});
+
+test("a scheduled extraction still inside the window is pending, not lost", async () => {
+  const scheduled = { extractionId: "cx_1", status: "scheduled", scheduledAt: new Date(NOW - 3_000).toISOString() };
+  const out = await inspectTurn(withExtraction(), {
+    readEvidence: store([]),
+    readExtraction: extractionStore([scheduled]),
+    now: () => NOW,
+  });
+  assert.equal(out.claimExtraction.resolution, "pending");
+});
+
+test("a completed extraction carries its lifecycle, and no claim text", async () => {
+  const out = await inspectTurn(withExtraction(), {
+    readEvidence: store([]),
+    readExtraction: extractionStore([extracted()]),
+    now: () => NOW,
+  });
+  assert.equal(out.claimExtraction.resolution, "complete");
+  assert.equal(out.claimExtraction.status, "extracted");
+  assert.equal(out.claimExtraction.lagMs, 1000);
+  assert.equal(out.claimExtraction.latencyMs, 4000);
+  assert.equal(out.claimExtraction.claimCount, 3);
+  // The join reports how many; the store holds what they say.
+  assert.doesNotMatch(JSON.stringify(out), /The price is \$4,000\./);
+});
+
+test("a lost extraction outranks an abstention, and both outrank a clean join", async () => {
+  const lost = await inspectTurn(withExtraction({ claimExtractionStatus: "abstained" }), {
+    readEvidence: store([]),
+    readExtraction: extractionStore([{ extractionId: "cx_1", status: "scheduled", scheduledAt: new Date(NOW - 300_000).toISOString() }]),
+    now: () => NOW,
+  });
+  assert.equal(lost.joinStatus, "extraction_lost");
+});
+
+test("an unreadable extraction record is not silently treated as absent", async () => {
+  const out = await inspectTurn(withExtraction(), {
+    readEvidence: store([]),
+    readExtraction: async () => ({ ok: false, reason: "unreadable" }),
+    now: () => NOW,
+  });
+  assert.equal(out.claimExtraction.resolution, "unreadable");
+  assert.equal(out.joinStatus, "extraction_lost");
+});
+
+test("a turn claiming an extraction with no id recorded is a gap", async () => {
+  // The completed record failed to write. The turn says it extracted; nothing
+  // names the result.
+  const out = await inspectTurn(turn({ evidenceIds: [], claimExtractionStatus: "extracted", claimExtractionId: null }), {
+    readEvidence: store([]),
+    readExtraction: extractionStore([]),
+    now: () => NOW,
+  });
+  assert.equal(out.claimExtraction.resolution, "missing");
+});
+
+test("without an extraction reader the join reports what the turn said and checks nothing", async () => {
+  const out = await inspectTurn(withExtraction(), { readEvidence: store([]), now: () => NOW });
+  assert.equal(out.claimExtraction.resolution, "not_run");
+  assert.equal(out.claimExtraction.status, "extracted");
+});
+
+test("every emitted extraction resolution is one of the declared set", async () => {
+  const cases = [
+    [withExtraction(), extractionStore([extracted()])],
+    [withExtraction(), extractionStore([])],
+    [withExtraction({ ts: new Date(NOW - 5_000).toISOString() }), extractionStore([])],
+    [turn({ evidenceIds: [], claimExtractionStatus: "skipped" }), extractionStore([])],
+  ];
+  for (const [t, reader] of cases) {
+    const out = await inspectTurn(t, { readEvidence: store([]), readExtraction: reader, now: () => NOW });
+    assert.ok(EXTRACTION_RESOLUTIONS.includes(out.claimExtraction.resolution), out.claimExtraction.resolution);
+    assert.ok(JOIN_STATUSES.includes(out.joinStatus), out.joinStatus);
+  }
 });

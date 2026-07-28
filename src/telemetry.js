@@ -341,6 +341,10 @@ export function buildTurnRecord(entry, extra = {}) {
     claimExtractionSkipReason: entry?.claimExtractionSkipReason ?? null,
     claimExtractionAbstentionReason: entry?.claimExtractionAbstentionReason ?? null,
     claimExtractionLatencyMs: entry?.claimExtractionLatencyMs ?? null,
+    claimExtractionScheduledAt: entry?.claimExtractionScheduledAt ?? null,
+    claimExtractionStartedAt: entry?.claimExtractionStartedAt ?? null,
+    claimExtractionCompletedAt: entry?.claimExtractionCompletedAt ?? null,
+    claimExtractionLagMs: entry?.claimExtractionLagMs ?? null,
     claimCount: entry?.claimCount ?? 0,
     materialClaimCount: entry?.materialClaimCount ?? 0,
 

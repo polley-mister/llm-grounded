@@ -1,6 +1,6 @@
 {
   "name": "llm-grounded",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": false,
   "description": "Deterministic grounding and voice contract for LLM agents. Framework-independent core, with an OpenClaw plugin adapter included.",
   "license": "MIT",

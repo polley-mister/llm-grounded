@@ -276,6 +276,12 @@ export function createGroundingStore(opts = {}) {
         claimExtractionSkipReason: null,
         claimExtractionAbstentionReason: null,
         claimExtractionLatencyMs: null,
+        // Scheduled, started, completed — so an inspector can tell "not written
+        // yet" from "never finished", which are the same absence otherwise.
+        claimExtractionScheduledAt: null,
+        claimExtractionStartedAt: null,
+        claimExtractionCompletedAt: null,
+        claimExtractionLagMs: null,
         claimCount: 0,
         materialClaimCount: 0,
         // Whether the plugin could resolve its own configuration at all.
@@ -380,6 +386,11 @@ export function createGroundingStore(opts = {}) {
       entry.claimExtractionSkipReason = outcome.skipReason ?? null;
       entry.claimExtractionAbstentionReason = outcome.abstentionReason ?? null;
       entry.claimExtractionLatencyMs = outcome.latencyMs ?? null;
+      const stamp = (v) => (Number.isFinite(v) ? new Date(v).toISOString() : null);
+      entry.claimExtractionScheduledAt = stamp(outcome.scheduledAt);
+      entry.claimExtractionStartedAt = stamp(outcome.startedAt);
+      entry.claimExtractionCompletedAt = stamp(outcome.completedAt);
+      entry.claimExtractionLagMs = outcome.lagMs ?? null;
       entry.claimCount = outcome.claimCount ?? 0;
       entry.materialClaimCount = outcome.materialClaimCount ?? 0;
       entry.updatedAt = now();

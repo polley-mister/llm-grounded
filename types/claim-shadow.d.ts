@@ -35,10 +35,14 @@ export function runShadowExtraction(input: {
     detail: any;
 } | {
     ran: boolean;
-    extractionId: string;
+    extractionId: any;
     status: any;
     skipReason: any;
     storeFailed: boolean;
+    scheduledAt: number;
+    startedAt: number;
+    completedAt: number;
+    lagMs: number;
     latencyMs: number;
     claimCount: any;
     materialClaimCount: any;
@@ -53,17 +57,25 @@ export function runShadowExtraction(input: {
  * material or not. Both live here rather than in telemetry, which is the store
  * that must stay free of verbatim content.
  */
-export function buildShadowRecord({ cfg, entry, extraction, draft, latencyMs, now }: {
+export function buildShadowRecord({ cfg, entry, extraction, draft, latencyMs, now, extractionId, scheduledAt, startedAt, completedAt, }: {
     cfg: any;
     entry: any;
     extraction: any;
     draft: any;
     latencyMs: any;
     now?: () => number;
+    extractionId: any;
+    scheduledAt: any;
+    startedAt: any;
+    completedAt: any;
 }): {
     schemaVersion: string;
-    extractionId: string;
+    extractionId: any;
     extractedAt: string;
+    scheduledAt: string;
+    startedAt: string;
+    completedAt: string;
+    lagMs: number;
     internalTurnId: any;
     turnId: any;
     trafficClass: any;
@@ -105,3 +117,17 @@ export function pruneShadowExtractions(dir: any, retentionDays: number, logger: 
 export const CLAIM_SHADOW_SCHEMA_VERSION: "claim-extraction-shadow-v1";
 /** Why a turn was not extracted from. Not the same as abstaining. */
 export const SHADOW_SKIP_REASONS: readonly string[];
+/**
+ * Statuses a stored extraction record can carry.
+ *
+ * `scheduled` is written *before* the model call and overwritten when it
+ * returns. That costs a second small local write per extraction and buys the
+ * only way to see a completion loss: if the gateway is restarted or the process
+ * dies mid-call, the turn record is never written either — `agent_end` had not
+ * finished — so nothing in telemetry would record that an extraction had been
+ * started at all. A scheduled record left on disk is that evidence.
+ *
+ * Without it, a killed extraction is indistinguishable from a turn that was
+ * never eligible, and completion rate cannot be measured.
+ */
+export const SHADOW_RECORD_STATUSES: readonly string[];

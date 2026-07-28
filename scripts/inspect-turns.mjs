@@ -6,9 +6,15 @@
 // writes to either store. Safe to run against a live deployment's data.
 //
 //   node scripts/inspect-turns.mjs \
-//     --telemetry ~/.openclaw/var/llm-grounded/telemetry \
-//     --evidence  ~/.openclaw/var/llm-grounded/evidence-capture \
+//     --telemetry   ~/.openclaw/var/llm-grounded/telemetry \
+//     --evidence    ~/.openclaw/var/llm-grounded/evidence-capture \
+//     [--extractions ~/.openclaw/var/llm-grounded/claim-extraction] \
 //     [--traffic human,synthetic_test] [--since 2026-07-28] [--summary]
+//     [--settlement-seconds 60]
+//
+// Extraction runs after delivery, so a turn record can be written and read
+// before its extraction record exists. Within the settlement window that reads
+// as `pending`, not as loss.
 
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -16,12 +22,14 @@ import path from "node:path";
 import { inspectTurn, summarizeInspections } from "../src/inspection.js";
 
 function args(argv) {
-  const out = { traffic: null, since: null, summary: false, retentionDays: 14 };
+  const out = { traffic: null, since: null, summary: false, retentionDays: 14, extractions: null, settlementMs: undefined };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--summary") out.summary = true;
     else if (a === "--telemetry") out.telemetry = argv[++i];
     else if (a === "--evidence") out.evidence = argv[++i];
+    else if (a === "--extractions") out.extractions = argv[++i];
+    else if (a === "--settlement-seconds") out.settlementMs = Number(argv[++i]) * 1000;
     else if (a === "--traffic") out.traffic = new Set(argv[++i].split(",").map((s) => s.trim()).filter(Boolean));
     else if (a === "--since") out.since = Date.parse(argv[++i]);
     else if (a === "--retention-days") out.retentionDays = Number(argv[++i]);
@@ -65,16 +73,18 @@ async function* turnRecords(dir, { since, traffic }) {
   }
 }
 
-/** Read one evidence record by id, distinguishing absent from unreadable. */
-function evidenceReader(dir) {
-  return async (evidenceId) => {
-    // The id is used as a filename, so it must not be able to leave the store.
-    if (!/^ev_[A-Za-z0-9-]+$/.test(evidenceId)) {
-      return { ok: false, reason: "unreadable" };
-    }
+/**
+ * Read one record by id, distinguishing absent from unreadable.
+ *
+ * The id becomes a filename, so it is matched against a strict pattern first:
+ * an id read out of a record must not be able to name a path outside the store.
+ */
+function recordReader(dir, pattern) {
+  return async (id) => {
+    if (!dir || !pattern.test(id)) return { ok: false, reason: "unreadable" };
     let text;
     try {
-      text = await readFile(path.join(dir, `${evidenceId}.json`), "utf8");
+      text = await readFile(path.join(dir, `${id}.json`), "utf8");
     } catch (err) {
       return { ok: false, reason: err?.code === "ENOENT" ? "missing" : "unreadable" };
     }
@@ -87,11 +97,17 @@ function evidenceReader(dir) {
 }
 
 const opts = args(process.argv.slice(2));
-const readEvidence = evidenceReader(opts.evidence);
+const readEvidence = recordReader(opts.evidence, /^ev_[A-Za-z0-9-]+$/);
+const readExtraction = opts.extractions ? recordReader(opts.extractions, /^cx_[A-Za-z0-9-]+$/) : undefined;
 const inspections = [];
 
 for await (const turn of turnRecords(opts.telemetry, opts)) {
-  const inspection = await inspectTurn(turn, { readEvidence, retentionDays: opts.retentionDays });
+  const inspection = await inspectTurn(turn, {
+    readEvidence,
+    readExtraction,
+    retentionDays: opts.retentionDays,
+    settlementMs: opts.settlementMs,
+  });
   inspections.push(inspection);
   if (!opts.summary) process.stdout.write(`${JSON.stringify(inspection)}\n`);
 }
