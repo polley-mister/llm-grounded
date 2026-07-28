@@ -237,6 +237,23 @@ def verify(artifact, version, epoch, since, timeout):
     Polled rather than slept-on: the watcher restart takes a variable few
     seconds and a fixed sleep is either too short to be reliable or long enough
     to be annoying on every deploy.
+
+    The invariant, stated because it would otherwise only be emergent from the
+    order of the checks below:
+
+        an unreadable signal may abstain, but success requires positive
+        evidence from at least one authoritative runtime source
+
+    Making `systemctl` and `journalctl` three-valued was right — a check that
+    cannot be read is not a check that says no, and treating it as one rejected
+    two healthy deployments. The failure mode on the other side is worse and
+    quieter: if every signal degrades to "unknown", abstention all the way down
+    reads as success, and the gate reports a deployment it never observed.
+
+    So the host's own report of what it loaded is not permitted to abstain.
+    `inspect_runtime()` returning nothing keeps the loop waiting and eventually
+    fails; it never passes. Everything positively observed is counted and
+    returned, so the caller can say what the verdict rests on.
     """
     deadline = time.time() + timeout
     last = "the gateway never reported the new artifact"
@@ -263,12 +280,20 @@ def verify(artifact, version, epoch, since, timeout):
             continue
 
         # From here on a mismatch is a real failure, not impatience.
+        #
+        # Everything checked below comes from the host's own report, which is
+        # the authoritative source the invariant requires. Reaching this point
+        # at all means it was read.
+        observed = ["artifact path"]
         if plugin.get("status") != "loaded":
             return False, f"plugin status is {plugin.get('status')!r}, not 'loaded'"
         if not plugin.get("activated"):
             return False, "plugin loaded but was not activated"
+        observed.append("status=loaded")
+        observed.append("activated")
         if plugin.get("version") != version:
             return False, f"plugin reports version {plugin.get('version')}, expected {version}"
+        observed.append(f"version={version}")
 
         state = epoch_state(epoch, since)
         if state == "absent":
@@ -280,8 +305,19 @@ def verify(artifact, version, epoch, since, timeout):
         if state == "unknown" and not warned_journal:
             log("note: the journal could not be read; the epoch line cannot be confirmed")
             warned_journal = True
-        return True, f"{PLUGIN_ID} {version} loaded from {artifact}" + (
-            "" if state == "confirmed" else " (epoch unconfirmed: journal unreadable)"
+        if state == "confirmed":
+            observed.append(f"epoch={epoch}")
+
+        # The invariant, enforced rather than assumed. Unreachable as written —
+        # `observed` always holds the artifact path by now — and kept because
+        # the thing it guards against is a future edit that lets one more signal
+        # abstain, one at a time, until nothing is actually checked.
+        if not observed:
+            return False, "no runtime signal could be positively observed"
+
+        return True, (
+            f"{PLUGIN_ID} {version} loaded from {artifact}"
+            f" [observed: {', '.join(observed)}]"
         )
     return False, last
 

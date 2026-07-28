@@ -30,7 +30,23 @@ function rate(numerator, denominator) {
 
 function emptyBucket() {
   return {
+    // Three denominators, because one number cannot answer "was extraction
+    // working" and "how much traffic has this deployment seen".
+    //
+    // Reporting 3 scheduled against 50 eligible reads as a 6% scheduling rate.
+    // It is not: 47 of those turns predate extraction being enabled at all, and
+    // a turn that ran before the feature existed was never a candidate. The
+    // completion denominator is turns actually expected to schedule.
     eligibleTurns: 0,
+    eligibleSinceExtractionEnabled: 0,
+    eligibleInWindow: 0,
+    // Scheduled and completed under the current configuration, which is what
+    // the rates below are computed from. The all-time totals are kept beside
+    // them for reference and are deliberately not used as a numerator: an
+    // all-time count over an in-window denominator is the same category of
+    // error as the one this whole split exists to remove.
+    scheduledInWindow: 0,
+    completedInWindow: 0,
     extractionsScheduled: 0,
     extractionsCompleted: 0,
     completionRate: null,
@@ -43,7 +59,18 @@ function emptyBucket() {
     claims: 0,
     materialClaims: 0,
     claimsPerTurn: null,
-    materialClaimsPerTurn: null,
+    // How often the extractor labelled a claim material. A prevalence
+    // statistic about its own output, and nothing more.
+    //
+    // It is not precision. Precision needs a human to say whether those labels
+    // were correct, and recall needs a human to say what was missed. Both are
+    // carried as explicit nulls rather than omitted, so a reader cannot mistake
+    // this rate for either of them.
+    materialLabelRate: null,
+    materialityPrecision: null,
+    materialityRecall: null,
+    claimPrecision: null,
+    claimRecall: null,
     claimsByType: {},
     latencyMs: { p50: null, p90: null, p95: null, p99: null, samples: 0 },
     lagMs: { p50: null, p95: null, samples: 0 },
@@ -55,9 +82,20 @@ function emptyBucket() {
 }
 
 function finalize(bucket, pricing) {
-  bucket.completionRate = rate(bucket.extractionsCompleted, bucket.extractionsScheduled);
+  // Both rates are window over window. Nothing here mixes an all-time count
+  // with an in-window one.
+  bucket.completionRate = rate(bucket.completedInWindow, bucket.scheduledInWindow);
+  bucket.schedulingRate = rate(bucket.scheduledInWindow, bucket.eligibleInWindow);
+  bucket.completionRateAllTime = rate(bucket.extractionsCompleted, bucket.extractionsScheduled);
   bucket.claimsPerTurn = rate(bucket.claims, bucket.byStatus.extracted);
   bucket.materialClaimsPerTurn = rate(bucket.materialClaims, bucket.byStatus.extracted);
+  bucket.materialLabelRate = rate(bucket.materialClaims, bucket.claims);
+  // Left null deliberately. Nothing computable from these two stores can fill
+  // them in; they need labelled turns. See docs/SHADOW-OBSERVATION.md.
+  bucket.materialityPrecision = null;
+  bucket.materialityRecall = null;
+  bucket.claimPrecision = null;
+  bucket.claimRecall = null;
 
   const lat = bucket._latencies.sort((a, b) => a - b);
   bucket.latencyMs = {
@@ -97,9 +135,14 @@ function finalize(bucket, pricing) {
 export function shadowMetrics(turns, extractions = null, opts = {}) {
   const eligible = new Set(opts.eligible ?? DEFAULT_ELIGIBLE);
   const pricing = opts.pricing ?? null;
+  // The window the current configuration has been in force for. Given as a
+  // behaviour epoch because that is the thing that changes when the deployment
+  // does, and it is already on every record.
+  const windowEpoch = opts.windowEpoch ?? null;
 
   const overall = emptyBucket();
   const byTraffic = {};
+  const byEpoch = {};
 
   for (const turn of turns ?? []) {
     const cls = turn?.trafficClass ?? "unknown";
@@ -111,14 +154,29 @@ export function shadowMetrics(turns, extractions = null, opts = {}) {
     const buckets = [overall, byTraffic[cls]];
     for (const b of buckets) b.eligibleTurns += 1;
 
+    const epoch = turn?.behaviorEpoch ?? "unknown";
+    byEpoch[epoch] ??= { eligible: 0, scheduled: 0, completed: 0 };
+    byEpoch[epoch].eligible += 1;
+
     const status = turn?.claimExtractionStatus ?? null;
+    // The field only exists once the extraction code is present, so its absence
+    // is how a turn from before the feature identifies itself.
+    const extractionCodeLive = status !== null && status !== undefined;
+    const inWindow = windowEpoch === null ? extractionCodeLive : epoch === windowEpoch;
+    for (const b of buckets) {
+      if (extractionCodeLive) b.eligibleSinceExtractionEnabled += 1;
+      if (inWindow) b.eligibleInWindow += 1;
+    }
+
     if (!status || status === "skipped") {
       for (const b of buckets) b.byStatus.skipped += 1;
       continue;
     }
+    byEpoch[epoch].scheduled += 1;
 
     for (const b of buckets) {
       b.extractionsScheduled += 1;
+      if (inWindow) b.scheduledInWindow += 1;
       if (status in b.byStatus) b.byStatus[status] += 1;
     }
 
@@ -131,9 +189,14 @@ export function shadowMetrics(turns, extractions = null, opts = {}) {
       ? Boolean(record) && record.status !== "scheduled"
       : Boolean(turn?.claimExtractionCompletedAt);
     for (const b of buckets) {
-      if (completed) b.extractionsCompleted += 1;
-      else b.pendingOrLost += 1;
+      if (completed) {
+        b.extractionsCompleted += 1;
+        if (inWindow) b.completedInWindow += 1;
+      } else {
+        b.pendingOrLost += 1;
+      }
     }
+    if (completed) byEpoch[epoch].completed += 1;
     if (!completed) continue;
 
     const reason = turn?.claimExtractionAbstentionReason ?? record?.abstentionReason ?? null;
@@ -179,13 +242,24 @@ export function shadowMetrics(turns, extractions = null, opts = {}) {
   return {
     overall: finalize(overall, pricing),
     byTraffic: Object.fromEntries(Object.entries(byTraffic).map(([k, v]) => [k, finalize(v, pricing)])),
+    // Per epoch, so the windows can be read directly rather than inferred from
+    // a single collapsed rate.
+    byEpoch,
     // What the numbers were computed from, so a table can never be read as
     // covering more than it does.
     basis: {
       eligibleClasses: [...eligible],
       extractionStoreRead: Boolean(extractions),
       pricingSupplied: Boolean(pricing),
+      windowEpoch,
       infrastructureAbstentions: [...INFRASTRUCTURE_REASONS],
+      // Stated in the output, not only in a document. Anyone reading this
+      // object should be told what it cannot tell them.
+      notMeasurable: [
+        "materialityPrecision and materialityRecall: need human labels",
+        "claimPrecision and claimRecall: need human labels",
+        "support or entailment: not part of shadow extraction at all",
+      ],
     },
   };
 }

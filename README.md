@@ -214,6 +214,9 @@ suggestion and nothing else.
   false-positive rate from it
 - [Releasing](docs/RELEASING.md): why every version gets a tag and only minor
   bumps get a release, and the deployment gate that has to pass
+- [Shadow observation](docs/SHADOW-OBSERVATION.md): what claim extraction is
+  measuring in production, what is deliberately not measured yet, and what may
+  be changed while the measurement runs
 
 ## The routing vectors are reusable on their own
 

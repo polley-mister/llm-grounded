@@ -17,11 +17,14 @@ export function shadowMetrics(turns: object[], extractions?: Map<string, object>
     byTraffic: {
         [k: string]: any;
     };
+    byEpoch: {};
     basis: {
         eligibleClasses: string[];
         extractionStoreRead: boolean;
         pricingSupplied: boolean;
+        windowEpoch: any;
         infrastructureAbstentions: string[];
+        notMeasurable: string[];
     };
 };
 /**

@@ -219,3 +219,87 @@ test("the sample only draws from eligible traffic", () => {
   assert.equal(out.poolSize, 1);
   assert.deepEqual(out.sample.single_claim.turns.map((t) => t.turnId), ["x"]);
 });
+
+// ---------------------------------------------------------------------------
+// Windows: the completion denominator is turns that were candidates
+// ---------------------------------------------------------------------------
+
+test("turns from before extraction existed are not counted against scheduling", () => {
+  // 3 scheduled against 50 eligible reads as a 6% scheduling rate. It is not:
+  // most of those turns ran before the feature was enabled and were never
+  // candidates.
+  const historical = Array.from({ length: 9 }, (_, i) => {
+    const t = turn({ turnId: `old-${i}`, behaviorEpoch: "v0.2.7-capture-telemetry" });
+    // The field does not exist on a record written before the code did.
+    delete t.claimExtractionStatus;
+    delete t.claimExtractionId;
+    return t;
+  });
+  const current = [turn({ turnId: "new-1", behaviorEpoch: "v0.3.4-x" })];
+
+  const m = shadowMetrics([...historical, ...current], null, { windowEpoch: "v0.3.4-x" });
+  assert.equal(m.overall.eligibleTurns, 10, "all of it is eligible traffic");
+  assert.equal(m.overall.eligibleSinceExtractionEnabled, 1, "only one turn had the code");
+  assert.equal(m.overall.eligibleInWindow, 1);
+  assert.equal(m.overall.schedulingRate, 1, "one candidate, one scheduled");
+});
+
+test("without a window epoch, the window is every turn the code was live for", () => {
+  const before = turn({ turnId: "old" });
+  delete before.claimExtractionStatus;
+  const m = shadowMetrics([before, turn({ turnId: "new" })], null);
+  assert.equal(m.overall.eligibleTurns, 2);
+  assert.equal(m.overall.eligibleInWindow, 1);
+  assert.equal(m.basis.windowEpoch, null);
+});
+
+test("both rates are window over window, never a mixed denominator", () => {
+  // An all-time numerator over an in-window denominator is the same category of
+  // error the split exists to remove, and it produced a scheduling rate of 1.0
+  // on a corpus where a quarter of candidates had not scheduled.
+  const old = turn({ turnId: "old", behaviorEpoch: "old-epoch" });
+  const inWindow = [
+    turn({ turnId: "a", behaviorEpoch: "now" }),
+    turn({ turnId: "b", behaviorEpoch: "now", claimExtractionStatus: "skipped", claimExtractionId: null }),
+  ];
+  const m = shadowMetrics([old, ...inWindow], null, { windowEpoch: "now" });
+
+  assert.equal(m.overall.extractionsScheduled, 2, "all-time total includes the old turn");
+  assert.equal(m.overall.scheduledInWindow, 1);
+  assert.equal(m.overall.eligibleInWindow, 2);
+  assert.equal(m.overall.schedulingRate, 0.5, "1 of 2 candidates, not 2 of 2");
+  assert.equal(m.overall.completionRate, 1, "and completion is over what was scheduled in-window");
+});
+
+test("counts are reported per epoch so the windows can be read directly", () => {
+  const m = shadowMetrics([
+    turn({ turnId: "a", behaviorEpoch: "e1" }),
+    turn({ turnId: "b", behaviorEpoch: "e2" }),
+    turn({ turnId: "c", behaviorEpoch: "e2", claimExtractionStatus: "skipped", claimExtractionId: null }),
+  ], null);
+  assert.deepEqual(m.byEpoch.e1, { eligible: 1, scheduled: 1, completed: 1 });
+  assert.deepEqual(m.byEpoch.e2, { eligible: 2, scheduled: 1, completed: 1 });
+});
+
+// ---------------------------------------------------------------------------
+// Materiality: a prevalence statistic, and two things it is not
+// ---------------------------------------------------------------------------
+
+test("the material rate is named as a label rate, and precision stays unmeasured", () => {
+  // 18 of 19 claims marked material says how often the extractor applied the
+  // label. Whether it was right needs a human, and so does what it missed.
+  const m = shadowMetrics([turn({ claimCount: 19, materialClaimCount: 18 })], null);
+  assert.ok(Math.abs(m.overall.materialLabelRate - 18 / 19) < 1e-9);
+  assert.equal(m.overall.materialityPrecision, null);
+  assert.equal(m.overall.materialityRecall, null);
+  assert.equal(m.overall.claimPrecision, null);
+  assert.equal(m.overall.claimRecall, null);
+});
+
+test("the report says what it cannot measure, in the output and not only in a doc", () => {
+  const m = shadowMetrics([turn()], null);
+  const stated = m.basis.notMeasurable.join(" ");
+  assert.match(stated, /materialityPrecision/);
+  assert.match(stated, /human labels/);
+  assert.match(stated, /support or entailment/);
+});

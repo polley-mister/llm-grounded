@@ -32,3 +32,6 @@ telemetry/
 deploy/
 local/
 *.local.json
+
+# Python bytecode from scripts/
+__pycache__/

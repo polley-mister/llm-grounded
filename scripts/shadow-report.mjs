@@ -20,7 +20,7 @@ import path from "node:path";
 import { reviewSample, shadowMetrics } from "../src/shadow-metrics.js";
 
 function args(argv) {
-  const out = { since: null, sample: false, pricing: null, eligible: null };
+  const out = { since: null, sample: false, pricing: null, eligible: null, windowEpoch: null };
   let priceIn = null;
   let priceOut = null;
   for (let i = 0; i < argv.length; i += 1) {
@@ -32,6 +32,7 @@ function args(argv) {
     else if (a === "--price-input") priceIn = Number(argv[++i]);
     else if (a === "--price-output") priceOut = Number(argv[++i]);
     else if (a === "--eligible") out.eligible = argv[++i].split(",").map((s) => s.trim()).filter(Boolean);
+    else if (a === "--window-epoch") out.windowEpoch = argv[++i];
   }
   if (!out.telemetry) throw new Error("usage: shadow-report.mjs --telemetry <dir> [--extractions <dir>] [--sample]");
   if (Number.isFinite(priceIn) && Number.isFinite(priceOut)) {
@@ -104,7 +105,11 @@ const report = {
   generatedAt: new Date().toISOString(),
   turnsRead: turns.length,
   extractionsRead: extractions ? extractions.size : null,
-  ...shadowMetrics(turns, extractions, { eligible: opts.eligible, pricing: opts.pricing }),
+  ...shadowMetrics(turns, extractions, {
+    eligible: opts.eligible,
+    pricing: opts.pricing,
+    windowEpoch: opts.windowEpoch,
+  }),
 };
 
 if (opts.sample) report.reviewSample = reviewSample(turns, extractions, { eligible: opts.eligible });
