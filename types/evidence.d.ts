@@ -1,8 +1,6 @@
-export declare const EVIDENCE_VERSION = 1;
-export declare const DEFAULT_EVIDENCE_DIR: any;
 /** OpenClaw session ids are operator-controlled; keep the filename inert. */
-export declare function evidenceFileName(sessionId: any): string;
-export declare function buildEvidence(entry: any, extra?: {}): {
+export function evidenceFileName(sessionId: any): string;
+export function buildEvidence(entry: any, extra?: {}): {
     version: number;
     sessionId: any;
     runId: any;
@@ -31,7 +29,7 @@ export declare function buildEvidence(entry: any, extra?: {}): {
             needsRematerialization: boolean;
             caseModel: any;
             caseAgentId: any;
-        } | null;
+        };
     };
     thinkingLevel: any;
     updatedAt: string;
@@ -40,6 +38,8 @@ export declare function buildEvidence(entry: any, extra?: {}): {
  * Write one evidence record. Best effort: an unwritable directory must never
  * fail the agent turn — it degrades to "no evidence", which fails closed.
  */
-export declare function writeEvidence(dir: any, sessionId: any, record: any, logger: any): Promise<any>;
+export function writeEvidence(dir: any, sessionId: any, record: any, logger: any): Promise<any>;
 /** Keep the evidence directory bounded; oldest-by-name pruning is enough. */
-export declare function pruneEvidence(dir: any, maxFiles?: number): Promise<any>;
+export function pruneEvidence(dir: any, maxFiles?: number): Promise<any>;
+export const EVIDENCE_VERSION: 1;
+export const DEFAULT_EVIDENCE_DIR: any;

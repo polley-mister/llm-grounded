@@ -5,7 +5,7 @@
  * @param {{query?: string} & Record<string, unknown>} params its parameters
  * @returns {{blocked: boolean, reason?: string, matched?: string}}
  */
-export declare function assessToolSafety(toolName: string, params: {
+export function assessToolSafety(toolName: string, params: {
     query?: string;
 } & Record<string, unknown>): {
     blocked: boolean;
@@ -13,4 +13,4 @@ export declare function assessToolSafety(toolName: string, params: {
     matched?: string;
 };
 /** Message returned to the model in place of results. */
-export declare function blockMessage(): string;
+export function blockMessage(): string;

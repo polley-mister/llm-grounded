@@ -3,13 +3,13 @@
  * merely the first word of the sentence. "an TC20" qualifies; "a great car" does
  * not. Deterministic, cheap, and biased toward refusing.
  */
-export declare function hasValueToken(text: any): boolean;
+export function hasValueToken(text: any): boolean;
 /**
  * A message that is mostly a quotation is reporting text, not asserting it.
  * Measured by share of characters inside quotes rather than by presence, so an
  * ordinary statement that happens to quote a two-word name still counts.
  */
-export declare function isMostlyQuotation(text: any): boolean;
+export function isMostlyQuotation(text: any): boolean;
 /**
  * Classify one turn for the fact-transaction pipeline.
  *
@@ -18,7 +18,7 @@ export declare function isMostlyQuotation(text: any): boolean;
  * @returns {{eligible: boolean, kind: "create"|"correct"|null, reason: string,
  *            unambiguous: boolean}}
  */
-export declare function detectFactStatement(userMessage: string, prevAssistant: string | null | undefined): {
+export function detectFactStatement(userMessage: string, prevAssistant: string | null | undefined): {
     eligible: boolean;
     kind: "create" | "correct" | null;
     reason: string;

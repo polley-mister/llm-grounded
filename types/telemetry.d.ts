@@ -9,13 +9,13 @@
  * every record carries the exact configuration that produced it. Freeze
  * interpretability, not progress.
  */
-export declare function behaviorIdentity(cfg: any, extra?: {}): Promise<any>;
+export function behaviorIdentity(cfg: any, extra?: {}): Promise<any>;
 /** Reset between tests, and after any deliberate config change. */
-export declare function resetFingerprint(): void;
-export declare function buildInfo(read?: any): any;
+export function resetFingerprint(): void;
+export function buildInfo(read?: any): any;
 /** Test seam: drop the memoised build info. */
-export declare function resetBuildInfo(): void;
-export declare function buildTurnRecord(entry: any, extra?: {}): {
+export function resetBuildInfo(): void;
+export function buildTurnRecord(entry: any, extra?: {}): {
     ts: string;
     pluginVersion: any;
     pluginId: any;
@@ -57,7 +57,7 @@ export declare function buildTurnRecord(entry: any, extra?: {}): {
     evidenceCaptureSkippedCount: any;
     evidenceCaptureFailedCount: any;
     evidenceCaptureStatus: string;
-    claimSupported: null;
+    claimSupported: any;
     blockedTools: any;
     toolBlocked: boolean;
     trafficClass: any;
@@ -93,6 +93,6 @@ export declare function buildTurnRecord(entry: any, extra?: {}): {
     replyWords: number;
 };
 /** Append one record. Never throws. */
-export declare function writeTurn(dir: any, record: any, logger: any): Promise<any>;
+export function writeTurn(dir: any, record: any, logger: any): Promise<any>;
 /** Drop day files older than the retention window. Never throws. */
-export declare function pruneTurns(dir: any, retentionDays: number | undefined, logger: any): Promise<number>;
+export function pruneTurns(dir: any, retentionDays: number, logger: any): Promise<number>;

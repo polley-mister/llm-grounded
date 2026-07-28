@@ -1,8 +1,5 @@
-export type TrafficClass = "human" | "heartbeat" | "scheduled_automation" | "system" | "synthetic_test";
-/** @typedef {"human"|"heartbeat"|"scheduled_automation"|"system"|"synthetic_test"} TrafficClass */
-export declare const TRAFFIC_CLASSES: readonly string[];
 /** True for a class this module is willing to emit. */
-export declare function isTrafficClass(value: any): boolean;
+export function isTrafficClass(value: any): boolean;
 /**
  * Resolve the traffic class for one turn.
  *
@@ -22,7 +19,7 @@ export declare function isTrafficClass(value: any): boolean;
  *          default?: string}} [rules]
  * @returns {{trafficClass: TrafficClass, reason: string, signals: object}}
  */
-export declare function resolveTrafficClass(meta?: {
+export function resolveTrafficClass(meta?: {
     sessionId?: string;
     sessionKey?: string;
     agentId?: string;
@@ -35,3 +32,6 @@ export declare function resolveTrafficClass(meta?: {
     reason: string;
     signals: object;
 };
+/** @typedef {"human"|"heartbeat"|"scheduled_automation"|"system"|"synthetic_test"} TrafficClass */
+export const TRAFFIC_CLASSES: readonly string[];
+export type TrafficClass = "human" | "heartbeat" | "scheduled_automation" | "system" | "synthetic_test";

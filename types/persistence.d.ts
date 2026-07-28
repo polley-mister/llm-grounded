@@ -1,6 +1,3 @@
-export type CorrectionOutcome = "accepted" | "ambiguous" | "not_applicable";
-export type PersistenceOutcome = "committed" | "failed" | "skipped";
-export type ResponsePolicy = "answer" | "answer_with_persistence_note" | "clarify";
 /** @typedef {"accepted"|"ambiguous"|"not_applicable"} CorrectionOutcome */
 /** @typedef {"committed"|"failed"|"skipped"} PersistenceOutcome */
 /** @typedef {"answer"|"answer_with_persistence_note"|"clarify"} ResponsePolicy */
@@ -25,7 +22,7 @@ export type ResponsePolicy = "answer" | "answer_with_persistence_note" | "clarif
  *   responsePolicy: ResponsePolicy,
  * }}
  */
-export declare function resolveOutcomes(entry: {
+export function resolveOutcomes(entry: {
     factEligible?: boolean;
     factKind?: string | null;
     factUnambiguous?: boolean;
@@ -50,11 +47,11 @@ export declare function resolveOutcomes(entry: {
  *
  * @param {{overlayActive?: boolean}} [opts]
  */
-export declare function persistenceNote({ overlayActive }?: {
+export function persistenceNote({ overlayActive }?: {
     overlayActive?: boolean;
 }): "The durable record update failed; the correction remains active for this conversation only." | "The vault update failed, so I have not stored that correction.";
 /** True when the text claims the fact reached durable storage. */
-export declare function claimsPersistence(text: any): boolean;
+export function claimsPersistence(text: any): boolean;
 /**
  * Rebuild a truthful reply from structured fact data.
  *
@@ -78,7 +75,7 @@ export declare function claimsPersistence(text: any): boolean;
  *          newValue?: string, previousValue?: string}|null} structuredFact
  * @param {{overlayActive?: boolean}} [opts]
  */
-export declare function safeFallbackText(structuredFact: {
+export function safeFallbackText(structuredFact: {
     operation?: string;
     subject?: string;
     property?: string;
@@ -86,7 +83,7 @@ export declare function safeFallbackText(structuredFact: {
     previousValue?: string;
 } | null, { overlayActive }?: {
     overlayActive?: boolean;
-}): string | null;
+}): string;
 /**
  * Compose the delivered reply.
  *
@@ -100,7 +97,10 @@ export declare function safeFallbackText(structuredFact: {
  * @returns {{text: string, refused: boolean}} `refused` when the draft claims
  *   the write succeeded and therefore cannot simply be annotated
  */
-export declare function composeWithNote(answer: string, note: string): {
+export function composeWithNote(answer: string, note: string): {
     text: string;
     refused: boolean;
 };
+export type CorrectionOutcome = "accepted" | "ambiguous" | "not_applicable";
+export type PersistenceOutcome = "committed" | "failed" | "skipped";
+export type ResponsePolicy = "answer" | "answer_with_persistence_note" | "clarify";

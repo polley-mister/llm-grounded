@@ -1,12 +1,3 @@
-/** Where the truth of a claim comes from. Epistemic source, not subject. */
-export declare const CLAIM_TYPES: readonly string[];
-/** How the proposition is presented. Does not decide whether it is checkable. */
-export declare const MODALITIES: readonly string[];
-/** Evidence kinds. Multi-label: one claim may need several. */
-export declare const EVIDENCE_KINDS: readonly string[];
-export declare const ABSTENTION_REASONS: readonly string[];
-export declare const SCHEMA_VERSION = "claims-v2";
-export declare const PROMPT_VERSION = "claims-v2";
 /**
  * Whether a claim was produced in the v2 shape.
  *
@@ -14,7 +5,7 @@ export declare const PROMPT_VERSION = "claims-v2";
  * run that quietly emits legacy-shaped claims would score as a success while
  * having ignored the contract. Counted rather than assumed.
  */
-export declare function isV2Shape(raw: any): boolean;
+export function isV2Shape(raw: any): boolean;
 /**
  * Split a draft into sentence spans, preserving offsets.
  *
@@ -22,14 +13,14 @@ export declare function isV2Shape(raw: any): boolean;
  * so they are carried rather than recomputed. Questions and quotations are
  * segmented like anything else and deliberately not removed.
  */
-export declare function segment(draft: any): any[];
+export function segment(draft: any): any[];
 /**
  * Replace anything that looks like a credential before it reaches a model.
  *
  * Redaction is the one semantic-ish thing the deterministic layer does, and it
  * only ever removes; it never reclassifies.
  */
-export declare function redact(text: any): string;
+export function redact(text: any): string;
 /**
  * Validate one claim against the contract.
  *
@@ -37,7 +28,7 @@ export declare function redact(text: any): string;
  * repairing: a half-understood claim is worse than none, because it enters the
  * ladder with authority it has not earned.
  */
-export declare function validateClaim(raw: any, { draft, spans }: {
+export function validateClaim(raw: any, { draft, spans }: {
     draft: any;
     spans: any;
 }): {
@@ -58,7 +49,7 @@ export declare function validateClaim(raw: any, { draft, spans }: {
     requiredEvidence: any[];
     confidence: number;
     v2Shape: boolean;
-} | null;
+};
 /**
  * Validate one implied evidence premise.
  *
@@ -71,13 +62,13 @@ export declare function validateClaim(raw: any, { draft, spans }: {
  * were to invent spans or to accept a bundled claim. Both are worse than
  * naming the premise as what it is.
  */
-export declare function validatePremise(raw: any): {
+export function validatePremise(raw: any): {
     id: any;
     proposition: any;
     sourceType: any;
     requiredEvidence: any[];
     explicitInDraft: boolean;
-} | null;
+};
 /**
  * Reject a claim set that is not atomic.
  *
@@ -90,14 +81,14 @@ export declare function validatePremise(raw: any): {
  *
  * @returns {string|null} a reason, or null when the set is acceptable
  */
-export declare function checkAtomicity(claims: any, premises?: any[]): string | null;
+export function checkAtomicity(claims: any, premises?: any[]): string | null;
 /**
  * Parse and validate a whole extraction payload.
  *
  * Exported so the offline harness can replay recorded model output without a
  * live model.
  */
-export declare function parseExtraction(text: any, { draft, spans }: {
+export function parseExtraction(text: any, { draft, spans }: {
     draft: any;
     spans: any;
 }): {
@@ -106,9 +97,9 @@ export declare function parseExtraction(text: any, { draft, spans }: {
     claims?: undefined;
     premises?: undefined;
 } | {
-    reason?: undefined;
     ok: boolean;
     claims: {
+        id: any;
         surfaceText: any;
         proposition: any;
         text: any;
@@ -125,15 +116,15 @@ export declare function parseExtraction(text: any, { draft, spans }: {
         requiredEvidence: any[];
         confidence: number;
         v2Shape: boolean;
-        id: any;
     }[];
     premises: {
+        id: any;
         proposition: any;
         sourceType: any;
         requiredEvidence: any[];
         explicitInDraft: boolean;
-        id: any;
     }[];
+    reason?: undefined;
 };
 /**
  * Extract claims from one draft.
@@ -151,7 +142,7 @@ export declare function parseExtraction(text: any, { draft, spans }: {
  * @param {{llm?: object, timeoutMs?: number, maxTokens?: number, signal?: object,
  *          minConfidence?: number}} [opts]
  */
-export declare function extractClaims(input?: {
+export function extractClaims(input?: {
     userTurn?: string;
     draft?: string;
     conversationFacts?: string[];
@@ -164,51 +155,21 @@ export declare function extractClaims(input?: {
 }): Promise<{
     status: string;
     reason: any;
-    detail: string | undefined;
-    claims: never[];
+    detail: string;
+    claims: any[];
 } | {
     status: string;
     provenance: any;
-    claims: never[];
-} | {
-    status: string;
-    provenance: {
-        provider: any;
-        model: any;
-        schemaVersion: string;
-        promptVersion: string;
-        usage: any;
-        latencyMs: any;
-        finishReason: any;
-        requestId: any;
-        contentLength: any;
-    };
-    claims: {
-        surfaceText: any;
-        proposition: any;
-        text: any;
-        dependsOn: any;
-        dependsOnPremises: any;
-        sourceStart: any;
-        sourceEnd: any;
-        sentenceIndex: any;
-        claimType: any;
-        modality: any;
-        factual: boolean;
-        material: boolean;
-        verificationTarget: any;
-        requiredEvidence: any[];
-        confidence: number;
-        v2Shape: boolean;
-        id: any;
-    }[] | undefined;
-    premises: {
-        proposition: any;
-        sourceType: any;
-        requiredEvidence: any[];
-        explicitInDraft: boolean;
-        id: any;
-    }[];
+    claims: any[];
 }>;
 /** Material claims that should be checked. The ladder's input. */
-export declare function verificationTargets(extraction: any): any;
+export function verificationTargets(extraction: any): any;
+/** Where the truth of a claim comes from. Epistemic source, not subject. */
+export const CLAIM_TYPES: readonly string[];
+/** How the proposition is presented. Does not decide whether it is checkable. */
+export const MODALITIES: readonly string[];
+/** Evidence kinds. Multi-label: one claim may need several. */
+export const EVIDENCE_KINDS: readonly string[];
+export const ABSTENTION_REASONS: readonly string[];
+export const SCHEMA_VERSION: "claims-v2";
+export const PROMPT_VERSION: "claims-v2";

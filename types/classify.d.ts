@@ -7,32 +7,32 @@
  *
  * @param {string[]} terms
  */
-export declare function configurePersonalTerms(terms: string[]): void;
+export function configurePersonalTerms(terms: string[]): void;
 /** Read back what is configured. Exported for tests and for describeFeatures. */
-export declare function personalTermCount(): number;
+export function personalTermCount(): number;
 /** True for a brief conversational reaction with no external premise. */
-export declare function isAcknowledgement(message: any): any;
+export function isAcknowledgement(message: any): any;
 /** True when the turn is about the agent's own Live Settings. */
-export declare function isSelfSettingsQuestion(message: any): any;
+export function isSelfSettingsQuestion(message: any): any;
 /**
  * A declarative counter-claim: no question mark, a negation that is not the
  * opening word, and at least one word of subject before it.
  */
-export declare function isNegatedAssertion(message: any): boolean;
+export function isNegatedAssertion(message: any): boolean;
 /** Remove transport framing. Returns the original if stripping empties it. */
-export declare function stripChannelContext(message: any): string;
+export function stripChannelContext(message: any): string;
 /**
  * Register the names this agent answers to, so being addressed by name is not
  * mistaken for a reference to something in the outside world.
  *
  * @param {string[]} names
  */
-export declare function configureAgentNames(names: string[]): void;
+export function configureAgentNames(names: string[]): void;
 /**
  * Remove a leading greeting and/or vocative address. Returns the original text
  * when stripping would empty it, so a bare "hey" is still a greeting.
  */
-export declare function stripVocative(message: any): string;
+export function stripVocative(message: any): string;
 /**
  * Lowercase counterpart to `hasNamedExternalEntity`.
  *
@@ -42,14 +42,14 @@ export declare function stripVocative(message: any): string;
  * interrogative frame, or the source a claim is attributed to, and treats a
  * word that is neither ordinary English nor ours as an external referent.
  */
-export declare function hasLowercaseExternalReference(message: any): boolean;
+export function hasLowercaseExternalReference(message: any): boolean;
 /**
  * Best-effort detection of a named external person, work, event, product, or
  * place. Conservative in one direction only: when it is unsure it says "named",
  * because an unnecessary web_search costs a search while a wrong unverified
  * claim costs trust.
  */
-export declare function hasNamedExternalEntity(message: any): boolean;
+export function hasNamedExternalEntity(message: any): boolean;
 /**
  * Return the operator's turn from a composed prompt. Native OpenClaw channels
  * send the bare message and carry no markers, so the prompt is returned as-is.
@@ -57,7 +57,7 @@ export declare function hasNamedExternalEntity(message: any): boolean;
  * @param {string} prompt
  * @returns {string}
  */
-export declare function extractUserTurn(prompt: string): string;
+export function extractUserTurn(prompt: string): string;
 /**
  * The per-turn nonce the console wraps around the operator's message.
  *
@@ -73,7 +73,7 @@ export declare function extractUserTurn(prompt: string): string;
  * @param {string} prompt
  * @returns {string|null}
  */
-export declare function extractTurnNonce(prompt: string): string | null;
+export function extractTurnNonce(prompt: string): string | null;
 /**
  * The most recent assistant text in a run's prepared session messages.
  *
@@ -86,7 +86,7 @@ export declare function extractTurnNonce(prompt: string): string | null;
  * @param {unknown[]} messages
  * @returns {string}
  */
-export declare function lastAssistantText(messages: unknown[]): string;
+export function lastAssistantText(messages: unknown[]): string;
 /**
  * A non-current question about the agent itself.
  *
@@ -100,7 +100,7 @@ export declare function lastAssistantText(messages: unknown[]): string;
  * @param {string} message
  * @returns {boolean}
  */
-export declare function isSelfReferenceQuestion(message: string): boolean;
+export function isSelfReferenceQuestion(message: string): boolean;
 /**
  * Classify one user turn.
  *
@@ -108,7 +108,7 @@ export declare function isSelfReferenceQuestion(message: string): boolean;
  * @param {{prevAssistant?: string, contextualCorrection?: boolean}} [context]
  * @returns {{kind: "web"|"memory"|null, correction: boolean, reason: string}}
  */
-export declare function classifyGrounding(message: string, context?: {
+export function classifyGrounding(message: string, context?: {
     prevAssistant?: string;
     contextualCorrection?: boolean;
 }): {
@@ -128,7 +128,7 @@ export declare function classifyGrounding(message: string, context?: {
  * If this function ever influences a decision it stops being an instrument and
  * becomes another rule to maintain.
  */
-export declare function describeFeatures(message: any): {
+export function describeFeatures(message: any): {
     words?: undefined;
     currentInfo?: undefined;
     memoryTerms?: undefined;
@@ -161,11 +161,10 @@ export declare function describeFeatures(message: any): {
     lowercaseExternal: boolean;
     arithmetic: boolean;
 };
-/** Tool names that satisfy each grounding kind. */
-export declare const SATISFYING_TOOLS: {
-    web: string[];
-    memory: string[];
-};
+export namespace SATISFYING_TOOLS {
+    let web: string[];
+    let memory: string[];
+}
 /**
  * The exact fail-closed reply. Never reword: acceptance asserts it verbatim.
  *
@@ -175,4 +174,4 @@ export declare const SATISFYING_TOOLS: {
  * as a compliance notice rather than as the agent, and at seven words this matches
  * the length a terse agent actually speaks at.
  */
-export declare const FAIL_CLOSED_TEXT = "I couldn't confirm that. I won't guess.";
+export const FAIL_CLOSED_TEXT: "I couldn't confirm that. I won't guess.";

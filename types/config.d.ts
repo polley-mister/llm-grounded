@@ -1,4 +1,68 @@
-export declare const DEFAULTS: Readonly<{
+/** Validate and normalize plugin config without pulling in the SDK. */
+export function parseConfig(value: any): {
+    success: boolean;
+    error: {
+        issues: {
+            path: any[];
+            message: any;
+        }[];
+    };
+} | {
+    success: boolean;
+    data: {
+        enabledAgents: string[];
+        evidenceDir: any;
+        maxRevisions: 1;
+        stateTtlSeconds: 600;
+        maxTrackedTurns: 200;
+        factsEnabled: false;
+        factsAgents: string[];
+        vaultPath: "";
+        factsCliPath: "";
+        behaviorEpoch: "v0.1.0-advisory";
+        telemetryDir: any;
+        telemetryRetentionDays: 30;
+        maxVoiceRevisions: 1;
+        voiceMaxWords: 90;
+        pythonPath: "python3";
+        caseTimeoutMs: 20000;
+        factTimeoutMs: 20000;
+        maxEvidenceItems: 4;
+        maxEvidenceChars: 1200;
+        maxFactRevisions: 1;
+        directSessionPrefixes: any[];
+        personalTerms: any[];
+        agentNames: any[];
+        trafficClasses: {
+            bySessionPrefix: {};
+            byAgent: {};
+            default: string;
+        };
+        evidenceCaptureEnabled: false;
+        evidenceCaptureDir: any;
+        evidenceCaptureRetentionDays: 14;
+        evidenceCaptureTools: string[];
+        evidenceCaptureRuntimeTools: any[];
+        evidenceCaptureTrafficClasses: string[];
+        evidenceCaptureTimeoutMs: 400;
+        evidenceCaptureMaxItemsPerCall: 5;
+        evidenceCaptureMaxItemsPerTurn: 8;
+        evidenceCaptureMaxCharsPerItem: 2000;
+        evidenceCaptureMaxCharsPerTurn: 10000;
+        promptFiles: any[];
+    };
+};
+/** Whether the contract applies to this agent. */
+export function appliesToAgent(cfg: any, agentId: any): boolean;
+/**
+ * Whether this agent may run a fact transaction.
+ *
+ * Unlike `enabledAgents`, an empty `factsAgents` means *no* agent rather than
+ * every agent. Vault-write reach is the one place where a permissive reading of
+ * an empty list would be indefensible.
+ */
+export function factsApplyToAgent(cfg: any, agentId: any): boolean;
+export const DEFAULTS: Readonly<{
     enabledAgents: string[];
     evidenceDir: any;
     maxRevisions: 1;
@@ -19,9 +83,9 @@ export declare const DEFAULTS: Readonly<{
     maxEvidenceItems: 4;
     maxEvidenceChars: 1200;
     maxFactRevisions: 1;
-    directSessionPrefixes: never[];
-    personalTerms: never[];
-    agentNames: never[];
+    directSessionPrefixes: any[];
+    personalTerms: any[];
+    agentNames: any[];
     trafficClasses: {
         bySessionPrefix: {};
         byAgent: {};
@@ -31,7 +95,7 @@ export declare const DEFAULTS: Readonly<{
     evidenceCaptureDir: any;
     evidenceCaptureRetentionDays: 14;
     evidenceCaptureTools: string[];
-    evidenceCaptureRuntimeTools: never[];
+    evidenceCaptureRuntimeTools: any[];
     evidenceCaptureTrafficClasses: string[];
     evidenceCaptureTimeoutMs: 400;
     evidenceCaptureMaxItemsPerCall: 5;
@@ -40,7 +104,7 @@ export declare const DEFAULTS: Readonly<{
     evidenceCaptureMaxCharsPerTurn: 10000;
     promptFiles: any[];
 }>;
-export declare const CONFIG_JSON_SCHEMA: Readonly<{
+export const CONFIG_JSON_SCHEMA: Readonly<{
     type: "object";
     additionalProperties: false;
     properties: {
@@ -283,62 +347,8 @@ export declare const CONFIG_JSON_SCHEMA: Readonly<{
         };
     };
 }>;
-/** Validate and normalize plugin config without pulling in the SDK. */
-export declare function parseConfig(value: any): {
-    success: boolean;
-    error: {
-        issues: {
-            path: never[];
-            message: any;
-        }[];
-    };
-} | {
-    success: boolean;
-    data: {
-        enabledAgents: string[];
-        evidenceDir: any;
-        maxRevisions: 1;
-        stateTtlSeconds: 600;
-        maxTrackedTurns: 200;
-        factsEnabled: false;
-        factsAgents: string[];
-        vaultPath: "";
-        factsCliPath: "";
-        behaviorEpoch: "v0.1.0-advisory";
-        telemetryDir: any;
-        telemetryRetentionDays: 30;
-        maxVoiceRevisions: 1;
-        voiceMaxWords: 90;
-        pythonPath: "python3";
-        caseTimeoutMs: 20000;
-        factTimeoutMs: 20000;
-        maxEvidenceItems: 4;
-        maxEvidenceChars: 1200;
-        maxFactRevisions: 1;
-        directSessionPrefixes: never[];
-        personalTerms: never[];
-        agentNames: never[];
-        trafficClasses: {
-            bySessionPrefix: {};
-            byAgent: {};
-            default: string;
-        };
-        evidenceCaptureEnabled: false;
-        evidenceCaptureDir: any;
-        evidenceCaptureRetentionDays: 14;
-        evidenceCaptureTools: string[];
-        evidenceCaptureRuntimeTools: never[];
-        evidenceCaptureTrafficClasses: string[];
-        evidenceCaptureTimeoutMs: 400;
-        evidenceCaptureMaxItemsPerCall: 5;
-        evidenceCaptureMaxItemsPerTurn: 8;
-        evidenceCaptureMaxCharsPerItem: 2000;
-        evidenceCaptureMaxCharsPerTurn: 10000;
-        promptFiles: any[];
-    };
-};
 /** Runtime config-schema object in the shape OpenClaw's plugin loader expects. */
-export declare const configSchema: Readonly<{
+export const configSchema: Readonly<{
     safeParse: typeof parseConfig;
     jsonSchema: Readonly<{
         type: "object";
@@ -584,13 +594,3 @@ export declare const configSchema: Readonly<{
         };
     }>;
 }>;
-/** Whether the contract applies to this agent. */
-export declare function appliesToAgent(cfg: any, agentId: any): boolean;
-/**
- * Whether this agent may run a fact transaction.
- *
- * Unlike `enabledAgents`, an empty `factsAgents` means *no* agent rather than
- * every agent. Vault-write reach is the one place where a permissive reading of
- * an empty list would be indefensible.
- */
-export declare function factsApplyToAgent(cfg: any, agentId: any): boolean;

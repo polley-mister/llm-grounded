@@ -1,7 +1,7 @@
 /**
  * @param {{maxPerSession?: number, maxSessions?: number}} [opts]
  */
-export declare function createSessionOverlay(opts?: {
+export function createSessionOverlay(opts?: {
     maxPerSession?: number;
     maxSessions?: number;
 }): {
@@ -12,12 +12,12 @@ export declare function createSessionOverlay(opts?: {
      * two without knowing which is which.
      */
     hold({ sessionKey, factKey, subject, property, currentValue, supersededValues }: {
-        currentValue: any;
-        factKey: any;
-        property: any;
         sessionKey: any;
+        factKey: any;
         subject: any;
-        supersededValues?: never[] | undefined;
+        property: any;
+        currentValue: any;
+        supersededValues?: any[];
     }): {
         subject: any;
         property: any;
@@ -25,7 +25,7 @@ export declare function createSessionOverlay(opts?: {
         supersededValues: any[];
         revision: string;
         sessionOnly: boolean;
-    } | null;
+    };
     /**
      * Drop a correction once it reaches durable storage.
      *
@@ -34,15 +34,15 @@ export declare function createSessionOverlay(opts?: {
      * reporting `sessionOverlayApplied` for a fact that is now properly stored.
      */
     release({ sessionKey, factKey }: {
-        factKey: any;
         sessionKey: any;
+        factKey: any;
     }): boolean;
     /** Whether this session is holding anything. Gates the note's wording. */
     active(sessionKey: any): boolean;
     /** Overlay-shaped view for merging with the durable overlay. */
     snapshot(sessionKey: any): {
         facts: {
-            [k: string]: object;
+            [k: string]: any;
         };
     };
     /** Forget a whole session. */
@@ -55,4 +55,4 @@ export declare function createSessionOverlay(opts?: {
  * The session wins on conflict. It is by definition newer: it exists only
  * because the operator corrected something the durable record still gets wrong.
  */
-export declare function mergeOverlays(durable: any, session: any): any;
+export function mergeOverlays(durable: any, session: any): any;

@@ -1,30 +1,3 @@
-export declare const EVIDENCE_SCHEMA_VERSION = "evidence-v1";
-/** Where evidence excerpts live. Separate from telemetry, deliberately. */
-export declare const DEFAULT_EVIDENCE_CAPTURE_DIR: any;
-/**
- * Tools whose results can support a claim.
- *
- * An allowlist, not a denylist: an unknown tool is not captured. `exec` and
- * file reads are absent on purpose — they routinely carry secrets and large
- * private documents, and they need a stricter policy than this module provides.
- */
-export declare const EVIDENCE_TOOLS: Readonly<{
-    web_search: "web";
-    web_fetch: "web";
-    memory_search: "memory";
-    wiki_search: "memory";
-    wiki_get: "memory";
-}>;
-export declare const BOUNDS: Readonly<{
-    excerptChars: 2000;
-    itemsPerCall: 5;
-    itemsPerTurn: 8;
-    charsPerTurn: 10000;
-}>;
-/** How long a bounded local capture may take before the turn moves on. */
-export declare const DEFAULT_CAPTURE_TIMEOUT_MS = 400;
-/** Days before an evidence file is pruned. Shorter than telemetry on purpose. */
-export declare const DEFAULT_RETENTION_DAYS = 14;
 /**
  * Pull readable text out of a tool result.
  *
@@ -33,7 +6,7 @@ export declare const DEFAULT_RETENTION_DAYS = 14;
  * with a `text`/`snippet` field. Anything else yields nothing, which is the
  * safe outcome — an unrecognised shape is not guessed at.
  */
-export declare function extractText(result: any): any;
+export function extractText(result: any): any;
 /**
  * Redact anything that looks like a credential.
  *
@@ -42,12 +15,12 @@ export declare function extractText(result: any): any;
  * something is materially different from one that did not, and the difference
  * belongs in the record rather than in a log line.
  */
-export declare function redactExcerpt(text: any): {
+export function redactExcerpt(text: any): {
     text: string;
     redactionCount: number;
 };
 /** Truncate on a word boundary where possible, so an excerpt ends readably. */
-export declare function boundExcerpt(text: any, limit?: 2000): {
+export function boundExcerpt(text: any, limit?: 2000): {
     text: string;
     truncated: boolean;
 };
@@ -59,12 +32,12 @@ export declare function boundExcerpt(text: any, limit?: 2000): {
  *
  * @returns {{captureStatus: "captured"|"skipped", reason?: string, record?: object}}
  */
-export declare function buildEvidenceRecord({ turnId, toolCallId, tool, params, result, evidenceItem, evidenceView, transformsApplied, now, id, }?: {
-    evidenceItem?: null | undefined;
-    evidenceView?: string | undefined;
-    id?: (() => string) | undefined;
-    now?: (() => number) | undefined;
-    transformsApplied?: never[] | undefined;
+export function buildEvidenceRecord({ turnId, toolCallId, tool, params, result, evidenceItem, evidenceView, transformsApplied, now, id, }?: {
+    evidenceItem?: any;
+    evidenceView?: string;
+    transformsApplied?: any[];
+    now?: () => number;
+    id?: () => string;
 }): {
     captureStatus: "captured" | "skipped";
     reason?: string;
@@ -76,7 +49,7 @@ export declare function buildEvidenceRecord({ turnId, toolCallId, tool, params, 
  * Bounds are per turn as well as per item: eight two-thousand-character
  * excerpts is a lot of third-party text to accumulate from one question.
  */
-export declare function createTurnBudget(bounds?: Readonly<{
+export function createTurnBudget(bounds?: Readonly<{
     excerptChars: 2000;
     itemsPerCall: 5;
     itemsPerTurn: 8;
@@ -87,8 +60,8 @@ export declare function createTurnBudget(bounds?: Readonly<{
         ok: boolean;
         reason: string;
     } | {
-        reason?: undefined;
         ok: boolean;
+        reason?: undefined;
     };
     readonly used: {
         items: number;
@@ -104,14 +77,14 @@ export declare function createTurnBudget(bounds?: Readonly<{
  * Never throws. Capture is best-effort by design — an unwritable store must not
  * be able to fail a user's turn.
  */
-export declare function writeEvidenceRecord(dir: any, record: any, logger: any): Promise<{
-    reason?: undefined;
+export function writeEvidenceRecord(dir: any, record: any, logger: any): Promise<{
     ok: boolean;
     path: any;
+    reason?: undefined;
 } | {
-    path?: undefined;
     ok: boolean;
     reason: string;
+    path?: undefined;
 }>;
 /**
  * Drop evidence past its retention window.
@@ -120,7 +93,7 @@ export declare function writeEvidenceRecord(dir: any, record: any, logger: any):
  * becomes an unbounded private archive nobody audits, so retention is shorter
  * than telemetry's by default.
  */
-export declare function pruneEvidenceCapture(dir: any, retentionDays: number | undefined, logger: any, now?: () => number): Promise<number>;
+export function pruneEvidenceCapture(dir: any, retentionDays: number, logger: any, now?: () => number): Promise<number>;
 /**
  * Capture one tool result end to end.
  *
@@ -135,20 +108,20 @@ export declare function pruneEvidenceCapture(dir: any, retentionDays: number | u
  * captured nothing because the budget was spent" are different facts about a
  * turn.
  */
-export declare function captureToolCallEvidence({ dir, budget, logger, tool, result, runtimeTools, bounds, ...rest }: {
+export function captureToolCallEvidence({ dir, budget, logger, tool, result, runtimeTools, bounds, ...rest }: {
     [x: string]: any;
+    dir: any;
+    budget: any;
+    logger: any;
+    tool: any;
+    result: any;
+    runtimeTools?: any[];
     bounds?: Readonly<{
         excerptChars: 2000;
         itemsPerCall: 5;
         itemsPerTurn: 8;
         charsPerTurn: 10000;
-    }> | undefined;
-    budget: any;
-    dir: any;
-    logger: any;
-    result: any;
-    runtimeTools?: never[] | undefined;
-    tool: any;
+    }>;
 }): Promise<{
     evidenceIds: any[];
     captured: number;
@@ -156,17 +129,44 @@ export declare function captureToolCallEvidence({ dir, budget, logger, tool, res
     failed: number;
     reasons: any[];
 }>;
-export declare function captureEvidence({ dir, budget, logger, ...input }: {
+export function captureEvidence({ dir, budget, logger, ...input }: {
     [x: string]: any;
-    budget: any;
     dir: any;
+    budget: any;
     logger: any;
 }): Promise<{
     captured: boolean;
     reason: any;
-    evidenceId: null;
+    evidenceId: any;
 } | {
     captured: boolean;
     evidenceId: any;
-    reason: null;
+    reason: any;
 }>;
+export const EVIDENCE_SCHEMA_VERSION: "evidence-v1";
+/** Where evidence excerpts live. Separate from telemetry, deliberately. */
+export const DEFAULT_EVIDENCE_CAPTURE_DIR: any;
+/**
+ * Tools whose results can support a claim.
+ *
+ * An allowlist, not a denylist: an unknown tool is not captured. `exec` and
+ * file reads are absent on purpose — they routinely carry secrets and large
+ * private documents, and they need a stricter policy than this module provides.
+ */
+export const EVIDENCE_TOOLS: Readonly<{
+    web_search: "web";
+    web_fetch: "web";
+    memory_search: "memory";
+    wiki_search: "memory";
+    wiki_get: "memory";
+}>;
+export const BOUNDS: Readonly<{
+    excerptChars: 2000;
+    itemsPerCall: 5;
+    itemsPerTurn: 8;
+    charsPerTurn: 10000;
+}>;
+/** How long a bounded local capture may take before the turn moves on. */
+export const DEFAULT_CAPTURE_TIMEOUT_MS: 400;
+/** Days before an evidence file is pruned. Shorter than telemetry on purpose. */
+export const DEFAULT_RETENTION_DAYS: 14;

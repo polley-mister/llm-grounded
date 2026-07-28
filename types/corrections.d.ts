@@ -11,7 +11,7 @@
  *   reason: string
  * }}
  */
-export declare function resolveCorrection(userMessage: any, prevAssistant: any): {
+export function resolveCorrection(userMessage: any, prevAssistant: any): {
     isCorrection: boolean;
     correctionScope: "user_owned_fact" | "external_world" | "ambiguous" | null;
     evidenceSource: string | null;

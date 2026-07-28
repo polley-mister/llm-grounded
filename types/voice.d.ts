@@ -1,7 +1,5 @@
-/** Words above which a reply is long by any reading of Verbosity 35. */
-export declare const DEFAULT_MAX_WORDS = 90;
 /** True when the operator asked for something that legitimately runs long. */
-export declare function depthWasRequested(userMessage: any): boolean;
+export function depthWasRequested(userMessage: any): boolean;
 /**
  * Assess one reply against the objective half of the voice rules.
  *
@@ -10,7 +8,7 @@ export declare function depthWasRequested(userMessage: any): boolean;
  *   prompted it (depth requests suspend the length rule) and the length bound
  * @returns {{ok: boolean, violations: string[], instruction: string}}
  */
-export declare function assessVoice(replyText: string, options?: {
+export function assessVoice(replyText: string, options?: {
     userMessage?: string;
     maxWords?: number;
 }): {
@@ -25,4 +23,6 @@ export declare function assessVoice(replyText: string, options?: {
  * was 118 words, answer in under 90" is an instruction, and a model can act on
  * the second without guessing what it did wrong.
  */
-export declare function revisionText(violations: any, words: any, maxWords: any): string;
+export function revisionText(violations: any, words: any, maxWords: any): string;
+/** Words above which a reply is long by any reading of Verbosity 35. */
+export const DEFAULT_MAX_WORDS: 90;

@@ -1,42 +1,3 @@
-export declare const FACT_TOOL_NAME = "vault_fact_commit";
-/** JSON Schema, not TypeBox: OpenClaw validates plain JSON-schema parameters. */
-export declare const FACT_TOOL_PARAMETERS: Readonly<{
-    type: "object";
-    additionalProperties: false;
-    required: string[];
-    properties: {
-        factKey: {
-            type: string;
-            description: string;
-        };
-        subject: {
-            type: string;
-            description: string;
-        };
-        property: {
-            type: string;
-            description: string;
-        };
-        operation: {
-            type: string;
-            enum: string[];
-            description: string;
-        };
-        previousValue: {
-            type: string;
-            description: string;
-        };
-        newValue: {
-            type: string;
-            description: string;
-        };
-        targetPage: {
-            type: string;
-            description: string;
-        };
-    };
-}>;
-export declare const FACT_TOOL_DESCRIPTION: string;
 /**
  * Whether `haystack` actually states `value`.
  *
@@ -44,7 +5,7 @@ export declare const FACT_TOOL_DESCRIPTION: string;
  * accepted `"2"` as evidence of `"TC20"`, which is exactly the class of
  * fabrication these prechecks exist to stop.
  */
-export declare function containsValue(haystack: any, needle: any): boolean;
+export function containsValue(haystack: any, needle: any): boolean;
 /**
  * Session keys that may run a fact transaction.
  *
@@ -66,7 +27,7 @@ export declare function containsValue(haystack: any, needle: any): boolean;
  * rather than guessed at, so an unrecognized native channel context fails
  * closed.
  */
-export declare function isDirectOwnerSession(sessionKey: any, ctx: any, cfg: any): {
+export function isDirectOwnerSession(sessionKey: any, ctx: any, cfg: any): {
     ok: boolean;
     reason: string;
 };
@@ -78,16 +39,14 @@ export declare function isDirectOwnerSession(sessionKey: any, ctx: any, cfg: any
  * configured operator prefixes, and one-shot CLI runs remain trusted direct
  * control-plane contexts.
  */
-export declare function isFactOperatorAuthorized(ctx: any, direct: any): boolean;
+export function isFactOperatorAuthorized(ctx: any, direct: any): boolean;
 /** Structural validation of the model's proposal, before anything is consulted. */
-export declare function validateProposal(params: any): {
+export function validateProposal(params: any): {
     ok: boolean;
     code: string;
     message: string;
     proposal?: undefined;
 } | {
-    code?: undefined;
-    message?: undefined;
     ok: boolean;
     proposal: {
         factKey: string;
@@ -95,48 +54,50 @@ export declare function validateProposal(params: any): {
         property: string;
         operation: string;
         newValue: string;
-        previousValue: string | null;
-        targetPage: string | null;
+        previousValue: string;
+        targetPage: string;
     };
+    code?: undefined;
+    message?: undefined;
 };
 /**
  * The evidence-binding prechecks. These are the acceptance criteria that stop a
  * plausible-sounding invention from reaching the vault.
  */
-export declare function runPrechecks(proposal: any, entry: any): {
+export function runPrechecks(proposal: any, entry: any): {
     ok: boolean;
     code: string;
     message: string;
     checks?: undefined;
 } | {
-    code?: undefined;
-    message?: undefined;
     ok: boolean;
     checks: {
         newValueInOwnerMessage: boolean;
         previousValueInAssistantAnswer: boolean;
         previousValueInVaultEvidence: any;
     };
-} | {
     code?: undefined;
     message?: undefined;
+} | {
     ok: boolean;
     checks: {
+        newValueInOwnerMessage: boolean;
         previousValueInAssistantAnswer?: undefined;
         previousValueInVaultEvidence?: undefined;
-        newValueInOwnerMessage: boolean;
     };
+    code?: undefined;
+    message?: undefined;
 };
 /**
  * Build the tool. `deps` supplies everything that touches the world, so the
  * whole path is testable without a gateway, a vault, or a model.
  */
-export declare function createFactTool({ cfg, store, ctx, deps, logger }: {
+export function createFactTool({ cfg, store, ctx, deps, logger }: {
     cfg: any;
-    ctx: any;
-    deps?: {} | undefined;
-    logger: any;
     store: any;
+    ctx: any;
+    deps?: {};
+    logger: any;
 }): {
     name: string;
     label: string;
@@ -185,3 +146,42 @@ export declare function createFactTool({ cfg, store, ctx, deps, logger }: {
         details: any;
     }>;
 };
+export const FACT_TOOL_NAME: "vault_fact_commit";
+/** JSON Schema, not TypeBox: OpenClaw validates plain JSON-schema parameters. */
+export const FACT_TOOL_PARAMETERS: Readonly<{
+    type: "object";
+    additionalProperties: false;
+    required: string[];
+    properties: {
+        factKey: {
+            type: string;
+            description: string;
+        };
+        subject: {
+            type: string;
+            description: string;
+        };
+        property: {
+            type: string;
+            description: string;
+        };
+        operation: {
+            type: string;
+            enum: string[];
+            description: string;
+        };
+        previousValue: {
+            type: string;
+            description: string;
+        };
+        newValue: {
+            type: string;
+            description: string;
+        };
+        targetPage: {
+            type: string;
+            description: string;
+        };
+    };
+}>;
+export const FACT_TOOL_DESCRIPTION: string;

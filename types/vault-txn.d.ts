@@ -1,4 +1,3 @@
-export declare const DEFAULT_TIMEOUT_MS = 20000;
 /**
  * Run one fact transaction.
  *
@@ -7,8 +6,9 @@ export declare const DEFAULT_TIMEOUT_MS = 20000;
  *
  * @returns {Promise<{ok: boolean, code: string, [key: string]: unknown}>}
  */
-export declare function commitFactTransaction(request: any, options?: {}): Promise<{
+export function commitFactTransaction(request: any, options?: {}): Promise<{
     ok: boolean;
     code: string;
     [key: string]: unknown;
 }>;
+export const DEFAULT_TIMEOUT_MS: 20000;

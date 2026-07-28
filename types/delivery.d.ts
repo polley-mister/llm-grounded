@@ -1,14 +1,3 @@
-export type DeliveryAction = "pass" | "replace" | "annotate" | "revise" | "safe_fallback";
-export type DeliveryDecision = {
-    action: DeliveryAction;
-    responsePolicy: string;
-    text?: string;
-    instruction?: string;
-    correctionOutcome: string;
-    persistenceOutcome: string;
-    persistenceFailureNoted: boolean;
-    correctionAppliedToResponse: boolean;
-};
 /**
  * Pick the terminal text from what the lanes observed.
  *
@@ -18,7 +7,7 @@ export type DeliveryDecision = {
  * @param {Array<{lane: string, text: string, external?: boolean}>} observations
  * @param {{fallbackText?: string, action?: string, originalDraft?: string}} [opts]
  */
-export declare function selectTerminalObservation(observations?: Array<{
+export function selectTerminalObservation(observations?: Array<{
     lane: string;
     text: string;
     external?: boolean;
@@ -27,23 +16,14 @@ export declare function selectTerminalObservation(observations?: Array<{
     action?: string;
     originalDraft?: string;
 }): {
-    deliveryAction: string | null;
-    observedLanes: string[];
-    emissionObserved: boolean;
-    emittedLane: null;
-    externalDeliveryObserved: boolean;
-    terminalTextMismatch: boolean;
-    textMutatedByPlugin: boolean;
-    final: string | null;
-} | {
-    deliveryAction: string | null;
-    observedLanes: string[];
-    externalDeliveryObserved: boolean;
     emissionObserved: boolean;
     emittedLane: string;
     terminalTextMismatch: boolean;
     textMutatedByPlugin: boolean;
     final: string;
+    deliveryAction: string;
+    observedLanes: string[];
+    externalDeliveryObserved: boolean;
 };
 /**
  * Decide what this turn actually delivers.
@@ -57,10 +37,21 @@ export declare function selectTerminalObservation(observations?: Array<{
  * }} input
  * @returns {DeliveryDecision}
  */
-export declare function resolveDelivery({ entry, draft, overlayActive, structuredFact, maxPersistenceClaimRevisions, }?: {
+export function resolveDelivery({ entry, draft, overlayActive, structuredFact, maxPersistenceClaimRevisions, }?: {
     entry: object;
     draft?: string;
     overlayActive?: boolean;
     structuredFact?: object | null;
     maxPersistenceClaimRevisions?: number;
 }): DeliveryDecision;
+export type DeliveryAction = "pass" | "replace" | "annotate" | "revise" | "safe_fallback";
+export type DeliveryDecision = {
+    action: DeliveryAction;
+    responsePolicy: string;
+    text?: string;
+    instruction?: string;
+    correctionOutcome: string;
+    persistenceOutcome: string;
+    persistenceFailureNoted: boolean;
+    correctionAppliedToResponse: boolean;
+};

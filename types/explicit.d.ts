@@ -6,7 +6,7 @@
  * answer was right by accident. Arithmetic is about to become a hard trigger,
  * where failing to fire is a silent gap rather than a lucky escape.
  */
-export declare function normalizeArithmetic(text: any): string;
+export function normalizeArithmetic(text: any): string;
 /**
  * True only for a complete, self-contained arithmetic expression.
  *
@@ -15,7 +15,7 @@ export declare function normalizeArithmetic(text: any): string;
  * calculation requests; "(16 + 8) / 3" is one and contains no verb at all.
  * The parser decides.
  */
-export declare function isCompleteArithmetic(text: any): boolean;
+export function isCompleteArithmetic(text: any): boolean;
 /**
  * The only decision that may compel a tool.
  *
@@ -24,7 +24,7 @@ export declare function isCompleteArithmetic(text: any): boolean;
  *   only to resolve whether this turn is a correction of it
  * @returns {{kind: "web"|"memory"|"arithmetic"|"admin"|null, reason: string}}
  */
-export declare function hardTrigger(message: string, context?: {
+export function hardTrigger(message: string, context?: {
     prevAssistant?: string;
 }): {
     kind: "web" | "memory" | "arithmetic" | "admin" | null;
@@ -36,4 +36,4 @@ export declare function hardTrigger(message: string, context?: {
  * Offered to the model as information, never as an obligation. It cannot
  * compel a tool, reject a response, consume a revision, or fail closed.
  */
-export declare function advisoryText(legacyKind: any): "" | "This may depend on current external information. Use web search if you need it." | "This may depend on something the operator told you before. Check memory if you need it.";
+export function advisoryText(legacyKind: any): "" | "This may depend on current external information. Use web search if you need it." | "This may depend on something the operator told you before. Check memory if you need it.";

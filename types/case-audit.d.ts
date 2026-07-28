@@ -1,20 +1,17 @@
-export declare const AUDIT_PURPOSE = "llm-grounded.vault-fact-audit";
-export declare const CASE_AGENT_ID = "case";
-export declare const AUDIT_DECISIONS: readonly string[];
 /**
  * Build the audit packet.
  *
  * `evidence` is the run's own successful wiki_search/wiki_get excerpts, already
  * bounded by the caller. The model never supplies any of this.
  */
-export declare function buildAuditPacket({ userMessage, prevAssistant, evidence, proposal, prechecks, maxEvidenceChars, maxMessageChars, }: {
-    evidence?: never[] | undefined;
-    maxEvidenceChars?: number | undefined;
-    maxMessageChars?: number | undefined;
-    prechecks?: {} | undefined;
-    prevAssistant: any;
-    proposal: any;
+export function buildAuditPacket({ userMessage, prevAssistant, evidence, proposal, prechecks, maxEvidenceChars, maxMessageChars, }: {
     userMessage: any;
+    prevAssistant: any;
+    evidence?: any[];
+    proposal: any;
+    prechecks?: {};
+    maxEvidenceChars?: number;
+    maxMessageChars?: number;
 }): {
     role: string;
     content: string;
@@ -30,7 +27,7 @@ export declare function buildAuditPacket({ userMessage, prevAssistant, evidence,
  * @returns {{decision: string, supportedOldValue: string|null,
  *            supportedNewValue: string|null, reason: string}|null}
  */
-export declare function parseCaseDecision(text: any): {
+export function parseCaseDecision(text: any): {
     decision: string;
     supportedOldValue: string | null;
     supportedNewValue: string | null;
@@ -40,18 +37,18 @@ export declare function parseCaseDecision(text: any): {
  * Run one audit. Returns a discriminated result; never throws for a model
  * problem, because every model problem is the same answer: do not write.
  */
-export declare function runCaseAudit({ llm, packet, timeoutMs, maxTokens, signal }: {
+export function runCaseAudit({ llm, packet, timeoutMs, maxTokens, signal }: {
     llm: any;
-    maxTokens?: number | undefined;
     packet: any;
-    signal: any;
     timeoutMs: any;
+    maxTokens?: number;
+    signal: any;
 }): Promise<{
     ok: boolean;
     code: string;
     message: string;
-    decision?: undefined;
     attribution?: undefined;
+    decision?: undefined;
 } | {
     ok: boolean;
     code: string;
@@ -63,8 +60,6 @@ export declare function runCaseAudit({ llm, packet, timeoutMs, maxTokens, signal
     };
     decision?: undefined;
 } | {
-    code?: undefined;
-    message?: undefined;
     ok: boolean;
     decision: {
         decision: string;
@@ -77,10 +72,15 @@ export declare function runCaseAudit({ llm, packet, timeoutMs, maxTokens, signal
         model: any;
         agentId: any;
     };
+    code?: undefined;
+    message?: undefined;
 }>;
 /** Provider/model/agent attribution, with no credentials and no prompt text. */
-export declare function attributionOf(result: any): {
+export function attributionOf(result: any): {
     provider: any;
     model: any;
     agentId: any;
 };
+export const AUDIT_PURPOSE: "llm-grounded.vault-fact-audit";
+export const CASE_AGENT_ID: "case";
+export const AUDIT_DECISIONS: readonly string[];
