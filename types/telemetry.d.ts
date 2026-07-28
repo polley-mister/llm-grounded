@@ -77,6 +77,7 @@ export function buildTurnRecord(entry: any, extra?: {}): {
     agentId: any;
     runId: any;
     turnId: any;
+    internalTurnId: any;
     turn: string;
     verdict: {
         kind: any;

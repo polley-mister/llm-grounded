@@ -8,6 +8,7 @@
 // state is never overwritten by the session fallback.
 
 import { SATISFYING_TOOLS } from "./classify.js";
+import { createTurnIndex } from "./turn-identity.js";
 
 /** Content words of a turn, for the relevance check below. */
 const RELEVANCE_STOPWORDS = new Set([
@@ -75,6 +76,8 @@ const DEFAULT_MAX_ENTRIES = 200;
  * @property {Record<string, number>} failClosedEmitted
  * @property {string|undefined} sessionKey
  * @property {string|undefined} runId
+ * @property {string|undefined} sessionId
+ * @property {string} turnId internal id; not derived from any host field
  * @property {string|null} turnNonce
  * @property {string} userMessage exact operator text for this turn
  * @property {string} prevAssistant the assistant message this turn may correct
@@ -91,6 +94,8 @@ const DEFAULT_MAX_ENTRIES = 200;
  * @property {boolean} factFailClosed
  * @property {import("./traffic.js").TrafficVerdict & {resolvedAt: string, identity: object}|null} traffic
  * @property {boolean} trafficIdentityMismatch
+ * @property {{features: object, startedAt: number|null, drafts: string[],
+ *             tools: object[], policy: object|null, blockedTools: object[]}} telemetry
  * @property {number} createdAt
  * @property {number} updatedAt
  */
@@ -113,10 +118,18 @@ export function createGroundingStore(opts = {}) {
     Number.isFinite(opts.maxEntries) && opts.maxEntries > 0 ? opts.maxEntries : DEFAULT_MAX_ENTRIES;
   const now = typeof opts.now === "function" ? opts.now : () => Date.now();
 
-  /** @type {Map<string, GroundingEntry>} */
+  /**
+   * Turn id -> entry.
+   *
+   * Keyed by the internal id minted in `turn-identity.js`, never by anything
+   * the host supplied. Every hook reaches the same entry through the alias
+   * index, whatever subset of `runId` / `sessionKey` / `sessionId` it happens
+   * to have been given.
+   *
+   * @type {Map<string, GroundingEntry>}
+   */
   const entries = new Map();
-  /** Session key -> most recent run key, for hooks that have no run id. */
-  const sessionIndex = new Map();
+  const turns = createTurnIndex(opts.turnIndex);
   /**
    * Tool call id -> the run that issued it.
    *
@@ -129,53 +142,43 @@ export function createGroundingStore(opts = {}) {
    */
   const pendingCalls = new Map();
 
-  function runKey(runId) {
-    return `run:${runId}`;
-  }
-  function sessionSlot(sessionKey) {
-    return `session:${sessionKey}`;
+  /** Drop an entry and the aliases that named it, so neither outlives the other. */
+  function evict(key) {
+    entries.delete(key);
+    turns.forget(key);
   }
 
   function expire() {
     const cutoff = now() - ttlMs;
     for (const [key, entry] of entries) {
-      if (entry.updatedAt < cutoff) entries.delete(key);
-    }
-    for (const [sessionKey, key] of sessionIndex) {
-      if (!entries.has(key)) sessionIndex.delete(sessionKey);
+      if (entry.updatedAt < cutoff) evict(key);
     }
     // Map iteration order is insertion order, so the oldest key is first.
     while (entries.size > maxEntries) {
       const oldest = entries.keys().next();
       if (oldest.done) break;
-      entries.delete(oldest.value);
+      evict(oldest.value);
     }
   }
 
   /**
-   * Resolve the key for a hook invocation. Prefers the run id; falls back to
-   * the session slot only when OpenClaw omitted the run id.
+   * Resolve a hook's partial host metadata to the turn it names.
+   *
+   * The precedence and the refusal to fall back from an unknown run id both
+   * live in `turn-identity.js` now; this is the store's one call into it, so
+   * there is no second derivation to drift.
    */
-  function keyFor({ runId, sessionKey }) {
-    // A supplied run id is authoritative: resolve that run and nothing else.
-    // An earlier version fell back to the session when the run id was unknown,
-    // which could hand one run's verified tool call or fail-closed latch to a
-    // different concurrent run in the same session. An unknown run is a run
-    // this store never classified, so it has no state here — that is a
-    // different thing from "use whatever the session last did".
-    if (runId) return runKey(runId);
-    // The session fallback exists only for the outbound delivery hooks, which
-    // OpenClaw 2026.6.1 does not give a run id at all.
-    if (sessionKey && sessionIndex.has(sessionKey)) return sessionIndex.get(sessionKey);
-    if (sessionKey) return sessionSlot(sessionKey);
-    return null;
+  function keyFor({ runId, sessionKey, sessionId }) {
+    return turns.resolve({ runId, sessionKey, sessionId });
   }
 
   return {
     /** Start (or restart) tracking for one turn. */
-    begin({ runId, sessionKey, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed, traffic }) {
-      const key = runId ? runKey(runId) : sessionKey ? sessionSlot(sessionKey) : null;
-      if (!key) return null;
+    begin({ runId, sessionKey, sessionId, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed, traffic }) {
+      if (!runId && !sessionKey && !sessionId) return null;
+      // Mint (or recover) this turn's id and index every alias the host gave
+      // us, so a later hook holding only one of them finds this same entry.
+      const key = turns.register({ runId, sessionKey, sessionId });
       const ts = now();
       /** @type {GroundingEntry} */
       const entry = {
@@ -194,6 +197,10 @@ export function createGroundingStore(opts = {}) {
         failClosedEmitted: {},
         sessionKey,
         runId,
+        sessionId,
+        // The turn's own name for itself. Hooks resolve to it; nothing
+        // reconstructs it.
+        turnId: key,
         turnNonce: turnNonce ?? null,
         userMessage: typeof userMessage === "string" ? userMessage : "",
         prevAssistant: typeof prevAssistant === "string" ? prevAssistant : "",
@@ -255,21 +262,90 @@ export function createGroundingStore(opts = {}) {
         overlayConfigResolved: true,
         overlayApplied: false,
         overlaySkipReason: null,
+        // What the turn record will be built from.
+        //
+        // These lived in five Maps beside the store, keyed `runId ?? sessionKey`
+        // while the entry was keyed `run:<id>` or `session:<key>`. Two
+        // derivations of one turn's identity, so a hook that had only a session
+        // key wrote where the reader was not looking. Same defect as the
+        // duplicated traffic classification, one layer down.
+        telemetry: {
+          features: {},
+          // Wall-clock, deliberately not the injectable `now`: this measures
+          // real latency, and tests that freeze time must not make it zero.
+          startedAt: null,
+          drafts: [],
+          tools: [],
+          policy: null,
+          blockedTools: [],
+        },
         createdAt: ts,
         updatedAt: ts,
       };
       entries.delete(key);
       entries.set(key, entry);
-      if (sessionKey) sessionIndex.set(sessionKey, key);
       // Expire after insertion so the new turn is never the entry that gets
       // evicted to satisfy the bound.
       expire();
       return entry;
     },
 
+    /**
+     * Record the matched classifier features, and start the latency clock.
+     *
+     * Read-only signals: they never influence a decision, they explain one.
+     */
+    noteTelemetryFeatures(ref, features, startedAt) {
+      const entry = this.get(ref);
+      if (!entry) return null;
+      entry.telemetry.features = features ?? {};
+      entry.telemetry.startedAt = startedAt ?? null;
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /** Record which policy governed this turn, and what the legacy verdict said. */
+    noteTelemetryPolicy(ref, policy) {
+      const entry = this.get(ref);
+      if (!entry) return null;
+      entry.telemetry.policy = policy ?? null;
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /** Append one draft pass. Identical consecutive text is one pass, not two. */
+    noteTelemetryDraft(ref, text) {
+      const entry = this.get(ref);
+      if (!entry) return null;
+      if (typeof text !== "string" || !text.trim()) return entry;
+      const drafts = entry.telemetry.drafts;
+      // finalize can fire more than once with the same text.
+      if (drafts[drafts.length - 1] !== text) drafts.push(text);
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /** Append one tool call, with its parameters already sanitized by the caller. */
+    noteTelemetryTool(ref, call) {
+      const entry = this.get(ref);
+      if (!entry) return null;
+      entry.telemetry.tools.push(call);
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /** Append one refused tool call. A count of zero is the success criterion. */
+    noteTelemetryBlocked(ref, blocked) {
+      const entry = this.get(ref);
+      if (!entry) return null;
+      entry.telemetry.blockedTools.push(blocked);
+      entry.updatedAt = now();
+      return entry;
+    },
+
     /** Count one voice revision for this turn. */
-    noteVoiceRevision({ runId, sessionKey }) {
-      const key = keyFor({ runId, sessionKey });
+    noteVoiceRevision(ref) {
+      const key = keyFor(ref);
       const entry = key ? entries.get(key) : null;
       if (!entry) return null;
       entry.voiceRevisions += 1;
@@ -278,8 +354,9 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Record one completed tool call. */
-    recordTool({ runId, sessionKey, toolName, ok, params }) {
-      const key = keyFor({ runId, sessionKey });
+    recordTool(ref) {
+      const { toolName, ok, params } = ref;
+      const key = keyFor(ref);
       if (!key) return null;
       const entry = entries.get(key);
       if (!entry) return null;
@@ -307,8 +384,9 @@ export function createGroundingStore(opts = {}) {
      * captured from the run's own tool results rather than accepted from the
      * model — a quotation the model composes is not evidence of anything.
      */
-    recordEvidence({ runId, sessionKey, toolName, params, result, maxItems, maxChars }) {
-      const key = keyFor({ runId, sessionKey });
+    recordEvidence(ref) {
+      const { toolName, params, result, maxItems, maxChars } = ref;
+      const key = keyFor(ref);
       if (!key) return null;
       const entry = entries.get(key);
       if (!entry) return null;
@@ -327,9 +405,9 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Bind a tool call id to the run that issued it. */
-    bindToolCall({ toolCallId, runId, sessionKey }) {
+    bindToolCall({ toolCallId, runId, sessionKey, sessionId }) {
       if (!toolCallId) return null;
-      const key = keyFor({ runId, sessionKey });
+      const key = keyFor({ runId, sessionKey, sessionId });
       if (!key) return null;
       pendingCalls.delete(toolCallId);
       pendingCalls.set(toolCallId, { key, at: now() });
@@ -352,7 +430,12 @@ export function createGroundingStore(opts = {}) {
       pendingCalls.delete(toolCallId);
       const entry = entries.get(hit.key);
       if (!entry) return null;
-      return { runId: entry.runId, sessionKey: entry.sessionKey };
+      return {
+        runId: entry.runId,
+        sessionKey: entry.sessionKey,
+        sessionId: entry.sessionId,
+        turnId: entry.turnId,
+      };
     },
 
     /**
@@ -369,12 +452,17 @@ export function createGroundingStore(opts = {}) {
       if (!hit) return null;
       const entry = entries.get(hit.key);
       if (!entry) return null;
-      return { runId: entry.runId, sessionKey: entry.sessionKey };
+      return {
+        runId: entry.runId,
+        sessionKey: entry.sessionKey,
+        sessionId: entry.sessionId,
+        turnId: entry.turnId,
+      };
     },
 
     /** Count one evidence-backed fact transaction attempt for this turn. */
-    noteFactCall({ runId, sessionKey }) {
-      const entry = this.get({ runId, sessionKey });
+    noteFactCall(ref) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.factCalls += 1;
       entry.updatedAt = now();
@@ -382,8 +470,8 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Count one CASE audit for this turn. */
-    noteCaseAudit({ runId, sessionKey }) {
-      const entry = this.get({ runId, sessionKey });
+    noteCaseAudit(ref) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.caseAudits += 1;
       entry.updatedAt = now();
@@ -391,8 +479,8 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Count one bounded fact-capture revision request. */
-    noteFactRevision({ runId, sessionKey }) {
-      const entry = this.get({ runId, sessionKey });
+    noteFactRevision(ref) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.factRevisions += 1;
       entry.updatedAt = now();
@@ -406,8 +494,8 @@ export function createGroundingStore(opts = {}) {
      * have different causes and different replacement text, and a turn can hit
      * one without the other.
      */
-    markFactFailClosed({ runId, sessionKey }) {
-      const entry = this.get({ runId, sessionKey });
+    markFactFailClosed(ref) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.factFailClosed = true;
       entry.updatedAt = now();
@@ -415,8 +503,8 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Capture the validated proposal a commit is about to be attempted with. */
-    setFactProposal({ runId, sessionKey }, proposal) {
-      const entry = this.get({ runId, sessionKey });
+    setFactProposal(ref, proposal) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.factProposal = proposal ?? null;
       entry.updatedAt = now();
@@ -424,8 +512,8 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Spend one repair on a draft that falsely claimed durable persistence. */
-    notePersistenceClaimRevision({ runId, sessionKey }) {
-      const entry = this.get({ runId, sessionKey });
+    notePersistenceClaimRevision(ref) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.persistenceClaimRevisions += 1;
       entry.updatedAt = now();
@@ -452,8 +540,8 @@ export function createGroundingStore(opts = {}) {
      * Never alters the turn. It marks the record so a corpus reader can tell a
      * degraded build from one that legitimately had nothing to capture.
      */
-    noteRuntimeConfigUnresolved({ runId, sessionKey }, reason) {
-      const entry = this.get({ runId, sessionKey });
+    noteRuntimeConfigUnresolved(ref, reason) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.runtimeConfigResolved = false;
       entry.overlayConfigResolved = false;
@@ -467,8 +555,8 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Note that the fact overlay actually rewrote a retrieval. */
-    noteOverlayApplied({ runId, sessionKey }) {
-      const entry = this.get({ runId, sessionKey });
+    noteOverlayApplied(ref) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.overlayApplied = true;
       entry.updatedAt = now();
@@ -481,8 +569,8 @@ export function createGroundingStore(opts = {}) {
      * Does not touch `traffic`. The recorded class remains what it was — the
      * point of storing it is that it stops moving.
      */
-    noteTrafficIdentityMismatch({ runId, sessionKey }) {
-      const entry = this.get({ runId, sessionKey });
+    noteTrafficIdentityMismatch(ref) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.trafficIdentityMismatch = true;
       entry.updatedAt = now();
@@ -490,8 +578,8 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Record why evidence capture did not run for this tool call. */
-    noteEvidenceSkip({ runId, sessionKey }, reason) {
-      const entry = this.get({ runId, sessionKey });
+    noteEvidenceSkip(ref, reason) {
+      const entry = this.get(ref);
       if (!entry) return null;
       // First reason wins: the earliest gate is the actionable one.
       entry.evidenceCaptureSkipReason ??= reason;
@@ -499,8 +587,8 @@ export function createGroundingStore(opts = {}) {
       return entry;
     },
 
-    noteEvidenceCapture({ runId, sessionKey }, outcome) {
-      const entry = this.get({ runId, sessionKey });
+    noteEvidenceCapture(ref, outcome) {
+      const entry = this.get(ref);
       if (!entry || !outcome) return null;
       entry.evidenceCaptureAttempted = true;
       for (const id of outcome.evidenceIds ?? []) entry.evidenceIds.push(id);
@@ -511,8 +599,8 @@ export function createGroundingStore(opts = {}) {
       return entry;
     },
 
-    observeLane({ runId, sessionKey }, { lane, text, external = false }) {
-      const entry = this.get({ runId, sessionKey });
+    observeLane(ref, { lane, text, external = false }) {
+      const entry = this.get(ref);
       if (!entry || !lane) return null;
       const existing = entry.deliveryObservations.find((o) => o.lane === lane);
       if (existing) {
@@ -527,8 +615,8 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Correct a lane's observation once the plugin has substituted its text. */
-    updateObservedText({ runId, sessionKey }, lane, text) {
-      const entry = this.get({ runId, sessionKey });
+    updateObservedText(ref, lane, text) {
+      const entry = this.get(ref);
       if (!entry) return null;
       const observation = entry.deliveryObservations.find((o) => o.lane === lane);
       if (!observation) return null;
@@ -538,8 +626,8 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Stash the resolved terminal decision for the delivery lanes to render. */
-    setDelivery({ runId, sessionKey }, decision) {
-      const entry = this.get({ runId, sessionKey });
+    setDelivery(ref, decision) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.delivery = decision ?? null;
       entry.updatedAt = now();
@@ -553,8 +641,8 @@ export function createGroundingStore(opts = {}) {
      * happens after finalize, so the first lane to fire is the only place that
      * can honestly report what shipped.
      */
-    claimTerminalRecord({ runId, sessionKey }, lane) {
-      const entry = this.get({ runId, sessionKey });
+    claimTerminalRecord(ref, lane) {
+      const entry = this.get(ref);
       if (!entry) return false;
       if (entry.terminalRecorded) return false;
       entry.terminalRecorded = { lane: lane ?? null, at: now() };
@@ -563,23 +651,23 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Record the terminal outcome of this turn's fact transaction. */
-    setFactOutcome({ runId, sessionKey }, outcome) {
-      const entry = this.get({ runId, sessionKey });
+    setFactOutcome(ref, outcome) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.factOutcome = outcome ?? null;
       entry.updatedAt = now();
       return entry;
     },
 
-    get({ runId, sessionKey }) {
-      const key = keyFor({ runId, sessionKey });
+    get({ runId, sessionKey, sessionId }) {
+      const key = keyFor({ runId, sessionKey, sessionId });
       if (!key) return null;
       return entries.get(key) ?? null;
     },
 
     /** Count one bounded revision request. */
-    noteRevision({ runId, sessionKey }) {
-      const entry = this.get({ runId, sessionKey });
+    noteRevision(ref) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.revisions += 1;
       entry.updatedAt = now();
@@ -587,8 +675,8 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Latch the fail-closed decision so delivery hooks agree with finalize. */
-    markFailClosed({ runId, sessionKey }) {
-      const entry = this.get({ runId, sessionKey });
+    markFailClosed(ref) {
+      const entry = this.get(ref);
       if (!entry) return null;
       entry.failClosed = true;
       entry.updatedAt = now();
@@ -603,8 +691,9 @@ export function createGroundingStore(opts = {}) {
      * `reply_payload_sending` and `message_sending` can both fire for one
      * delivery, and cancelling the second lane would drop the reply entirely.
      */
-    noteFailClosedEmission({ runId, sessionKey, lane }) {
-      const entry = this.get({ runId, sessionKey });
+    noteFailClosedEmission(ref) {
+      const { lane } = ref;
+      const entry = this.get(ref);
       if (!entry) return 0;
       const seen = entry.failClosedEmitted[lane] ?? 0;
       entry.failClosedEmitted[lane] = seen + 1;
@@ -613,11 +702,14 @@ export function createGroundingStore(opts = {}) {
     },
 
     /** Drop a turn's state once it can no longer be needed. */
-    release({ runId, sessionKey }) {
-      const key = keyFor({ runId, sessionKey });
+    release({ runId, sessionKey, sessionId }) {
+      const key = keyFor({ runId, sessionKey, sessionId });
       if (!key) return;
-      entries.delete(key);
-      if (sessionKey && sessionIndex.get(sessionKey) === key) sessionIndex.delete(sessionKey);
+      // The aliases go with it. Leaving them behind would let a later hook
+      // resolve to a turn that no longer exists, which reads as "this turn was
+      // never tracked" — the same ambiguity everywhere else in here is being
+      // removed.
+      evict(key);
     },
 
     expire,

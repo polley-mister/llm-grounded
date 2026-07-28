@@ -25,9 +25,10 @@ export function createGroundingStore(opts?: {
     now?: () => number;
 }): {
     /** Start (or restart) tracking for one turn. */
-    begin({ runId, sessionKey, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed, traffic }: {
+    begin({ runId, sessionKey, sessionId, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed, traffic }: {
         runId: any;
         sessionKey: any;
+        sessionId: any;
         kind: any;
         correction: any;
         correctionScope: any;
@@ -39,19 +40,24 @@ export function createGroundingStore(opts?: {
         factTransactionAllowed: any;
         traffic: any;
     }): GroundingEntry;
+    /**
+     * Record the matched classifier features, and start the latency clock.
+     *
+     * Read-only signals: they never influence a decision, they explain one.
+     */
+    noteTelemetryFeatures(ref: any, features: any, startedAt: any): GroundingEntry;
+    /** Record which policy governed this turn, and what the legacy verdict said. */
+    noteTelemetryPolicy(ref: any, policy: any): GroundingEntry;
+    /** Append one draft pass. Identical consecutive text is one pass, not two. */
+    noteTelemetryDraft(ref: any, text: any): GroundingEntry;
+    /** Append one tool call, with its parameters already sanitized by the caller. */
+    noteTelemetryTool(ref: any, call: any): GroundingEntry;
+    /** Append one refused tool call. A count of zero is the success criterion. */
+    noteTelemetryBlocked(ref: any, blocked: any): GroundingEntry;
     /** Count one voice revision for this turn. */
-    noteVoiceRevision({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    noteVoiceRevision(ref: any): GroundingEntry;
     /** Record one completed tool call. */
-    recordTool({ runId, sessionKey, toolName, ok, params }: {
-        runId: any;
-        sessionKey: any;
-        toolName: any;
-        ok: any;
-        params: any;
-    }): GroundingEntry;
+    recordTool(ref: any): GroundingEntry;
     /**
      * Retain a bounded excerpt of one successful wiki retrieval.
      *
@@ -59,20 +65,13 @@ export function createGroundingStore(opts?: {
      * captured from the run's own tool results rather than accepted from the
      * model — a quotation the model composes is not evidence of anything.
      */
-    recordEvidence({ runId, sessionKey, toolName, params, result, maxItems, maxChars }: {
-        runId: any;
-        sessionKey: any;
-        toolName: any;
-        params: any;
-        result: any;
-        maxItems: any;
-        maxChars: any;
-    }): GroundingEntry;
+    recordEvidence(ref: any): GroundingEntry;
     /** Bind a tool call id to the run that issued it. */
-    bindToolCall({ toolCallId, runId, sessionKey }: {
+    bindToolCall({ toolCallId, runId, sessionKey, sessionId }: {
         toolCallId: any;
         runId: any;
         sessionKey: any;
+        sessionId: any;
     }): any;
     /**
      * Resolve a bound tool call to its turn key. Single-use: the binding is
@@ -81,6 +80,8 @@ export function createGroundingStore(opts?: {
     resolveToolCall(toolCallId: any): {
         runId: string;
         sessionKey: string;
+        sessionId: string;
+        turnId: string;
     };
     /**
      * Look up a bound tool call without consuming the binding.
@@ -93,22 +94,15 @@ export function createGroundingStore(opts?: {
     peekToolCall(toolCallId: any): {
         runId: string;
         sessionKey: string;
+        sessionId: string;
+        turnId: string;
     };
     /** Count one evidence-backed fact transaction attempt for this turn. */
-    noteFactCall({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    noteFactCall(ref: any): GroundingEntry;
     /** Count one CASE audit for this turn. */
-    noteCaseAudit({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    noteCaseAudit(ref: any): GroundingEntry;
     /** Count one bounded fact-capture revision request. */
-    noteFactRevision({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    noteFactRevision(ref: any): GroundingEntry;
     /**
      * Latch the fact fail-closed decision.
      *
@@ -116,20 +110,11 @@ export function createGroundingStore(opts?: {
      * have different causes and different replacement text, and a turn can hit
      * one without the other.
      */
-    markFactFailClosed({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    markFactFailClosed(ref: any): GroundingEntry;
     /** Capture the validated proposal a commit is about to be attempted with. */
-    setFactProposal({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }, proposal: any): GroundingEntry;
+    setFactProposal(ref: any, proposal: any): GroundingEntry;
     /** Spend one repair on a draft that falsely claimed durable persistence. */
-    notePersistenceClaimRevision({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    notePersistenceClaimRevision(ref: any): GroundingEntry;
     /**
      * Record what a terminal lane saw.
      *
@@ -150,52 +135,28 @@ export function createGroundingStore(opts?: {
      * Never alters the turn. It marks the record so a corpus reader can tell a
      * degraded build from one that legitimately had nothing to capture.
      */
-    noteRuntimeConfigUnresolved({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }, reason: any): GroundingEntry;
+    noteRuntimeConfigUnresolved(ref: any, reason: any): GroundingEntry;
     /** Note that the fact overlay actually rewrote a retrieval. */
-    noteOverlayApplied({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    noteOverlayApplied(ref: any): GroundingEntry;
     /**
      * Note that the host later presented a different identity for this turn.
      *
      * Does not touch `traffic`. The recorded class remains what it was — the
      * point of storing it is that it stops moving.
      */
-    noteTrafficIdentityMismatch({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    noteTrafficIdentityMismatch(ref: any): GroundingEntry;
     /** Record why evidence capture did not run for this tool call. */
-    noteEvidenceSkip({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }, reason: any): GroundingEntry;
-    noteEvidenceCapture({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }, outcome: any): GroundingEntry;
-    observeLane({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }, { lane, text, external }: {
+    noteEvidenceSkip(ref: any, reason: any): GroundingEntry;
+    noteEvidenceCapture(ref: any, outcome: any): GroundingEntry;
+    observeLane(ref: any, { lane, text, external }: {
         lane: any;
         text: any;
         external?: boolean;
     }): any;
     /** Correct a lane's observation once the plugin has substituted its text. */
-    updateObservedText({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }, lane: any, text: any): any;
+    updateObservedText(ref: any, lane: any, text: any): any;
     /** Stash the resolved terminal decision for the delivery lanes to render. */
-    setDelivery({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }, decision: any): GroundingEntry;
+    setDelivery(ref: any, decision: any): GroundingEntry;
     /**
      * Claim the right to write this turn's terminal telemetry record.
      *
@@ -203,29 +164,18 @@ export function createGroundingStore(opts?: {
      * happens after finalize, so the first lane to fire is the only place that
      * can honestly report what shipped.
      */
-    claimTerminalRecord({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }, lane: any): boolean;
+    claimTerminalRecord(ref: any, lane: any): boolean;
     /** Record the terminal outcome of this turn's fact transaction. */
-    setFactOutcome({ runId, sessionKey }: {
+    setFactOutcome(ref: any, outcome: any): GroundingEntry;
+    get({ runId, sessionKey, sessionId }: {
         runId: any;
         sessionKey: any;
-    }, outcome: any): GroundingEntry;
-    get({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
+        sessionId: any;
     }): GroundingEntry;
     /** Count one bounded revision request. */
-    noteRevision({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    noteRevision(ref: any): GroundingEntry;
     /** Latch the fail-closed decision so delivery hooks agree with finalize. */
-    markFailClosed({ runId, sessionKey }: {
-        runId: any;
-        sessionKey: any;
-    }): GroundingEntry;
+    markFailClosed(ref: any): GroundingEntry;
     /**
      * Count one fail-closed substitution for a delivery lane and report how
      * many have happened there before. A turn can produce several payloads;
@@ -234,15 +184,12 @@ export function createGroundingStore(opts?: {
      * `reply_payload_sending` and `message_sending` can both fire for one
      * delivery, and cancelling the second lane would drop the reply entirely.
      */
-    noteFailClosedEmission({ runId, sessionKey, lane }: {
-        runId: any;
-        sessionKey: any;
-        lane: any;
-    }): number;
+    noteFailClosedEmission(ref: any): number;
     /** Drop a turn's state once it can no longer be needed. */
-    release({ runId, sessionKey }: {
+    release({ runId, sessionKey, sessionId }: {
         runId: any;
         sessionKey: any;
+        sessionId: any;
     }): void;
     expire: () => void;
     readonly size: number;
@@ -280,6 +227,11 @@ export type GroundingEntry = {
     failClosedEmitted: Record<string, number>;
     sessionKey: string | undefined;
     runId: string | undefined;
+    sessionId: string | undefined;
+    /**
+     * internal id; not derived from any host field
+     */
+    turnId: string;
     turnNonce: string | null;
     /**
      * exact operator text for this turn
@@ -312,6 +264,14 @@ export type GroundingEntry = {
         identity: object;
     }) | null;
     trafficIdentityMismatch: boolean;
+    telemetry: {
+        features: object;
+        startedAt: number | null;
+        drafts: string[];
+        tools: object[];
+        policy: object | null;
+        blockedTools: object[];
+    };
     createdAt: number;
     updatedAt: number;
 };

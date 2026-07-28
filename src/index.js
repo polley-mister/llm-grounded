@@ -381,7 +381,7 @@ export function createPlugin(deps = {}) {
       if (!appliesToAgent(cfg, ctx?.agentId)) return;
       const s = ensureStore(cfg);
       const prompt = event?.prompt ?? "";
-      const key = { runId: ctx?.runId, sessionKey: ctx?.sessionKey };
+      const key = turnKey(ctx, event);
       const nonce = extractTurnNonce(prompt);
       const existing = s.get(key);
 
@@ -449,15 +449,10 @@ export function createPlugin(deps = {}) {
           resolvedAt: "before_prompt_build",
           identity,
         });
-        // Phase 0: record the signals this turn tripped, alongside the verdict.
-        // Read-only — describeFeatures never influences the decision.
-        telemetryFeatures.set(key.runId ?? key.sessionKey, {
-          features: describeFeatures(userTurn),
-          startedAt: Date.now(),
-        });
         s.begin({
           runId: key.runId,
           sessionKey: key.sessionKey,
+          sessionId: key.sessionId,
           // Only a hard trigger creates an obligation. An advisory turn is
           // stored as kind:null, which makes it releasable on arrival — no
           // requirement, no revision, and structurally no route to
@@ -476,6 +471,15 @@ export function createPlugin(deps = {}) {
           factTransactionAllowed,
           traffic,
         });
+        // Phase 0: the signals this turn tripped, recorded beside the verdict
+        // on the turn itself. Read-only — describeFeatures never influences a
+        // decision. Recorded after begin, because it annotates the entry that
+        // begin creates.
+        //
+        // Date.now() rather than the injectable clock: this starts the latency
+        // measurement, and a test that freezes time must not silently make
+        // every turn take zero milliseconds.
+        s.noteTelemetryFeatures(key, describeFeatures(userTurn), Date.now());
       }
 
       // The correction rule is static, so it goes on the cacheable system
@@ -496,11 +500,12 @@ export function createPlugin(deps = {}) {
       // 29% ended fail-closed, 43% were routed by capitalisation alone.
       const advisory = hard.kind === null;
       if (isNewTurn) {
-        telemetryPolicy.set(key.runId ?? key.sessionKey, {
+        s.noteTelemetryPolicy(key, {
           policyMode: advisory ? "advisory" : "binding",
           hardTrigger: hard.kind,
           hardReason: hard.reason,
-          correctionScope: hard.correctionScope ?? null,
+          // correctionScope is not repeated here: it lives on the entry, which
+          // is what the record reads.
           evidenceSource: hard.evidenceSource ?? null,
           policyScope: hard.policyScope ?? null,
           legacyVerdict: verdict.kind,
@@ -548,19 +553,16 @@ export function createPlugin(deps = {}) {
       if (event?.toolCallId) {
         store.bindToolCall({
           toolCallId: event.toolCallId,
-          runId: ctx?.runId ?? event?.runId,
-          sessionKey: ctx?.sessionKey ?? event?.sessionKey,
+          ...turnKey(ctx, event),
         });
       }
 
       const safety = assessToolSafety(event?.toolName, event?.params);
       if (safety.blocked) {
-        const k = telemetryKey(ctx, event);
-        if (k) {
-          const blocked = telemetryBlocked.get(k) ?? [];
-          blocked.push({ tool: event?.toolName, reason: safety.reason });
-          telemetryBlocked.set(k, blocked);
-        }
+        store?.noteTelemetryBlocked?.(turnKey(ctx, event), {
+          tool: event?.toolName,
+          reason: safety.reason,
+        });
         pluginLogger?.warn?.(
           `llmGrounded: blocked ${event?.toolName} (${safety.reason})`,
         );
@@ -577,10 +579,7 @@ export function createPlugin(deps = {}) {
       // transaction. This closes the broad memory-wiki writer as a same-turn
       // bypass for both main and chat.
       if (event?.toolName === "wiki_apply") {
-        const entry = store?.get({
-          runId: ctx?.runId ?? event?.runId,
-          sessionKey: ctx?.sessionKey,
-        });
+        const entry = store?.get(turnKey(ctx, event));
         if (
           factsApplyToAgent(cfg, ctx?.agentId) &&
           entry?.factEligible &&
@@ -606,8 +605,7 @@ export function createPlugin(deps = {}) {
         // and trusted context. Plugin-owned tools currently populate the
         // context copy; core tools normally populate the event copy.
         toolCallId: event?.toolCallId ?? ctx?.toolCallId,
-        runId: ctx?.runId ?? event?.runId,
-        sessionKey: ctx?.sessionKey,
+        ...turnKey(ctx, event),
       });
       if (!bound) {
         return { block: true, blockReason: "llm-grounded: this tool call could not be bound to a turn" };
@@ -620,7 +618,7 @@ export function createPlugin(deps = {}) {
       if (!appliesToAgent(cfg, ctx?.agentId)) return;
       if (!store) return;
       const ok = !event?.error && !isErrorResult(event?.result);
-      const key = { runId: ctx?.runId ?? event?.runId, sessionKey: ctx?.sessionKey };
+      const key = turnKey(ctx, event);
       store.recordTool({ ...key, toolName: event?.toolName, ok, params: event?.params });
       noteToolCall(ctx, event, ok);
       // Successful retrievals become the audit packet's vault evidence. Failed
@@ -641,7 +639,7 @@ export function createPlugin(deps = {}) {
       const cfg = hookConfig(ctx);
       if (!appliesToAgent(cfg, ctx?.agentId)) return;
       if (!store) return;
-      const key = { runId: ctx?.runId ?? event?.runId, sessionKey: ctx?.sessionKey ?? event?.sessionKey };
+      const key = turnKey(ctx, event);
       const entry = store.get(key);
       if (!entry) return;
 
@@ -764,10 +762,10 @@ export function createPlugin(deps = {}) {
       const cfg = hookConfig(ctx);
       if (!appliesToAgent(cfg, event?.agentId ?? ctx?.agentId)) return;
       if (!store || !isVisibleTerminalAssistant(event?.message)) return;
-      const entry = store.get({ sessionKey: event?.sessionKey ?? ctx?.sessionKey });
+      const entry = store.get(turnKey(ctx, event));
       if (!entry) return;
 
-      const wkey = { runId: event?.runId ?? ctx?.runId, sessionKey: event?.sessionKey ?? ctx?.sessionKey };
+      const wkey = turnKey(ctx, event);
 
       // A resolved decision wins outright. Finalize has already decided what
       // ships; re-deriving "is something still pending" from counters here is
@@ -800,7 +798,7 @@ export function createPlugin(deps = {}) {
       // blocked draft. Resolving here rather than waiting for finalize is safe
       // because the decision is a pure function of state both hooks can see,
       // and it is stashed so finalize reuses it instead of recomputing.
-      const key = { runId: event?.runId ?? ctx?.runId, sessionKey: event?.sessionKey ?? ctx?.sessionKey };
+      const key = turnKey(ctx, event);
       // The latch is set by the next finalize, which has not run yet. A draft
       // whose grounding budget is already spent cannot ship regardless, so it
       // is fail-closed here even though the entry does not say so yet.
@@ -821,10 +819,7 @@ export function createPlugin(deps = {}) {
     reply_payload_sending(event, ctx) {
       const cfg = hookConfig(ctx);
       if (!store) return;
-      const key = {
-        runId: event?.runId ?? ctx?.runId,
-        sessionKey: event?.sessionKey ?? ctx?.sessionKey,
-      };
+      const key = turnKey(ctx, event);
       const entry = store.get(key);
       if (!entry) return;
       const decision = entry.delivery;
@@ -857,7 +852,7 @@ export function createPlugin(deps = {}) {
     message_sending(event, ctx) {
       const cfg = hookConfig(ctx);
       if (!store) return;
-      const key = { runId: ctx?.runId, sessionKey: ctx?.sessionKey };
+      const key = turnKey(ctx, event);
       const entry = store.get(key);
       if (!entry) return;
       const decision = entry.delivery;
@@ -895,10 +890,7 @@ export function createPlugin(deps = {}) {
       const cfg = hookConfig(ctx);
       if (!appliesToAgent(cfg, ctx?.agentId)) return;
       if (!store) return;
-      const entry = store.get({
-        runId: ctx?.runId ?? event?.runId,
-        sessionKey: ctx?.sessionKey,
-      });
+      const entry = store.get(turnKey(ctx, event));
       if (!entry) {
         // The only way a covered agent finishes a turn with no state is that
         // `before_prompt_build` never ran — which happens when
@@ -919,7 +911,7 @@ export function createPlugin(deps = {}) {
       // delivery lane, so by now `entry.emitted` says what actually left and
       // through which lane. A run that never delivered records honestly as
       // unobserved rather than being lost or being labelled as shipped.
-      const key = { runId: ctx?.runId ?? event?.runId, sessionKey: ctx?.sessionKey };
+      const key = turnKey(ctx, event);
       const finalizeEvent = entry.finalizeEvent ?? event;
       // Choose the most authoritative observation rather than whichever lane
       // happened to fire first: an outbound lane is what the operator actually
@@ -1026,6 +1018,7 @@ export function createPlugin(deps = {}) {
       const key = {
         runId: ctx?.runId ?? event?.runId ?? bound?.runId,
         sessionKey: ctx?.sessionKey ?? event?.sessionKey ?? bound?.sessionKey,
+        sessionId: event?.sessionId ?? ctx?.sessionId ?? bound?.sessionId,
       };
       const skip = (reason) => {
         // Legitimate skips are recorded too. "Nothing was captured" and
@@ -1095,7 +1088,10 @@ export function createPlugin(deps = {}) {
         tool,
         result,
         params: event?.params,
-        turnId: key.runId ?? key.sessionKey,
+        // Same correlation key the turn record uses, and read from the same
+        // place, so a capture that reached its turn through a bound tool call
+        // still files under the identity telemetry will report.
+        turnId: entry?.runId ?? entry?.sessionKey ?? key.runId ?? key.sessionKey,
         toolCallId: event?.toolCallId ?? null,
         runtimeTools,
         transformsApplied,
@@ -1149,8 +1145,7 @@ export function createPlugin(deps = {}) {
   // Phase 0 telemetry. Held outside the grounding store so a logging change
   // can never alter contract state, and so a missing record degrades to "no
   // telemetry" rather than a failed turn.
-  const telemetryPolicy = new Map();
-  const telemetryBlocked = new Map();
+
 
   /**
    * Whether this turn failed closed.
@@ -1181,36 +1176,31 @@ export function createPlugin(deps = {}) {
     return hard.kind === "web" || hard.kind === "memory" ? hard.kind : null;
   }
 
-  const telemetryFeatures = new Map();
-  const telemetryDrafts = new Map();
-  const telemetryTools = new Map();
-
-  function telemetryKey(ctx, event) {
-    return ctx?.runId ?? event?.runId ?? ctx?.sessionKey ?? event?.sessionKey ?? null;
+  /**
+   * The host metadata a hook has, in the shape the store resolves.
+   *
+   * Every field it can offer, rather than a single collapsed string: the store
+   * decides which one identifies the turn, and it is the only thing that
+   * decides.
+   */
+  function turnKey(ctx, event) {
+    return {
+      runId: ctx?.runId ?? event?.runId,
+      sessionKey: ctx?.sessionKey ?? event?.sessionKey,
+      sessionId: event?.sessionId ?? ctx?.sessionId,
+    };
   }
 
   function noteDraft(ctx, event) {
-    const k = telemetryKey(ctx, event);
-    if (!k) return;
-    const text = event?.lastAssistantMessage;
-    if (typeof text !== "string" || !text.trim()) return;
-    const list = telemetryDrafts.get(k) ?? [];
-    // Only distinct passes are interesting; finalize can fire more than once
-    // with identical text.
-    if (list[list.length - 1] !== text) list.push(text);
-    telemetryDrafts.set(k, list);
+    store?.noteTelemetryDraft?.(turnKey(ctx, event), event?.lastAssistantMessage);
   }
 
   function noteToolCall(ctx, event, ok) {
-    const k = telemetryKey(ctx, event);
-    if (!k) return;
-    const list = telemetryTools.get(k) ?? [];
-    list.push({
+    store?.noteTelemetryTool?.(turnKey(ctx, event), {
       name: event?.toolName ?? null,
       ok: Boolean(ok),
       params: sanitizeParams(event?.params),
     });
-    telemetryTools.set(k, list);
   }
 
   /** Query strings are the useful part; anything else could carry secrets. */
@@ -1237,7 +1227,6 @@ export function createPlugin(deps = {}) {
 
   async function recordTurn(cfg, entry, event, ctx, terminal = {}) {
     if (!cfg?.telemetryDir) return;
-    const k = telemetryKey(ctx, event);
     // Compare, do not reclassify. If this hook sees a different session or
     // agent than the turn was recorded under, that is worth knowing and worth
     // recording; it is not grounds for the turn to change what it is.
@@ -1245,23 +1234,17 @@ export function createPlugin(deps = {}) {
       store?.noteTrafficIdentityMismatch?.({ runId: entry.runId, sessionKey: entry.sessionKey });
       entry = { ...entry, trafficIdentityMismatch: true };
     }
-    const meta = k ? telemetryFeatures.get(k) : null;
-    const decorated = {
-      ...entry,
-      telemetry: {
-        features: meta?.features ?? {},
-        drafts: k ? telemetryDrafts.get(k) ?? [] : [],
-        tools: k ? telemetryTools.get(k) ?? [] : [],
-      },
-    };
+    // One turn, one record, read from the turn itself.
+    const meta = entry?.telemetry ?? null;
+    const decorated = entry;
     const record = buildTurnRecord(decorated, {
       pluginVersion: PLUGIN_VERSION,
       pluginId: PLUGIN_ID,
       implementation: PLUGIN_ID,
       coreCommit: buildInfo().coreCommit,
       identity: await behaviorIdentity(cfg, { model: ctx?.modelId ?? event?.modelId }),
-      policy: k ? telemetryPolicy.get(k) ?? null : null,
-      blockedTools: k ? telemetryBlocked.get(k) ?? [] : [],
+      policy: meta?.policy ?? null,
+      blockedTools: meta?.blockedTools ?? [],
       // The latch is only set when the plugin substitutes the line itself. When
       // the model emits it directly — which the requirement text asks it to —
       // the handler takes the alreadyFailClosed path and never latches, so the
@@ -1291,7 +1274,16 @@ export function createPlugin(deps = {}) {
       // Whether the host has since presented a different identity for the same
       // turn. A diagnostic, not a trigger: the recorded class stands.
       trafficIdentityMismatch: entry?.trafficIdentityMismatch === true,
-      turnId: k,
+      // Unchanged on purpose. This is the correlation key between a turn
+      // record and the evidence files it references, and evidence already on
+      // disk carries the host-derived form. Read from the entry rather than
+      // from this hook's context, so both sides now name the same turn even
+      // when a hook was handed less identity than another.
+      turnId: entry?.runId ?? entry?.sessionKey ?? null,
+      // The internal id, alongside rather than instead. Nothing correlates on
+      // it yet; it is here so a corpus can tell two turns apart when a host
+      // reuses a session key.
+      internalTurnId: entry?.turnId ?? null,
       sessionId: event?.sessionId ?? ctx?.sessionId ?? ctx?.sessionKey,
       agentId: ctx?.agentId,
       // What shipped, as observed by the first delivery lane. Falls back to the
@@ -1313,13 +1305,8 @@ export function createPlugin(deps = {}) {
       // third-party content and should not accumulate indefinitely.
       await pruneEvidenceCapture(cfg.evidenceCaptureDir, cfg.evidenceCaptureRetentionDays, pluginLogger);
     }
-    if (k) {
-      telemetryFeatures.delete(k);
-      telemetryDrafts.delete(k);
-      telemetryTools.delete(k);
-      telemetryPolicy.delete(k);
-      telemetryBlocked.delete(k);
-    }
+    // Nothing to clean up: the turn's telemetry is the turn's, and it is
+    // released, expired and bounded with the entry that holds it.
   }
 
   async function persist(cfg, entry, event, ctx) {
@@ -1411,10 +1398,7 @@ export function createPlugin(deps = {}) {
           // observed. The finalize event is stashed because it is the only
           // place carrying the draft and the model id.
           if (result?.action !== "revise") {
-            const key = {
-              runId: ctx?.runId ?? event?.runId,
-              sessionKey: ctx?.sessionKey ?? event?.sessionKey,
-            };
+            const key = turnKey(ctx, event);
             const entry = store?.get?.(key);
             if (entry) entry.finalizeEvent = event;
           }
@@ -1459,6 +1443,7 @@ export function createPlugin(deps = {}) {
           const key = {
             runId: ctx?.runId ?? event?.runId ?? boundCall?.runId,
             sessionKey: ctx?.sessionKey ?? event?.sessionKey ?? boundCall?.sessionKey,
+            sessionId: event?.sessionId ?? ctx?.sessionId ?? boundCall?.sessionId,
           };
 
           if (snapshot.status !== "resolved") {

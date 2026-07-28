@@ -234,7 +234,10 @@ export function buildTurnRecord(entry, extra = {}) {
     policyMode: extra.policy?.policyMode ?? null,
     hardTrigger: extra.policy?.hardTrigger ?? null,
     hardReason: extra.policy?.hardReason ?? null,
-    correctionScope: extra.policy?.correctionScope ?? null,
+    // From the turn, not from the policy snapshot. It was computed once and
+    // stored twice — on the entry and again beside it — and two copies of one
+    // decision is how they eventually disagree.
+    correctionScope: entry?.correctionScope ?? null,
     evidenceSource: extra.policy?.evidenceSource ?? null,
     policyScope: extra.policy?.policyScope ?? null,
     legacyVerdict: extra.policy?.legacyVerdict ?? null,
@@ -328,6 +331,8 @@ export function buildTurnRecord(entry, extra = {}) {
     agentId: extra.agentId ?? null,
     runId: entry?.runId ?? null,
     turnId: extra.turnId ?? entry?.runId ?? null,
+    // The store's own id for this turn, which no host field is derived from.
+    internalTurnId: extra.internalTurnId ?? entry?.turnId ?? null,
 
     turn: clip(entry?.userMessage),
 
