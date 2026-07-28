@@ -218,6 +218,22 @@ export {
 } from "./telemetry.js";
 
 export {
+  // Bounded, redacted evidence excerpts, stored apart from telemetry. Captures
+  // what a tool returned; makes no claim about whether it supports anything.
+  captureEvidence,
+  buildEvidenceRecord,
+  createTurnBudget,
+  writeEvidenceRecord,
+  pruneEvidenceCapture,
+  extractText,
+  redactExcerpt,
+  boundExcerpt,
+  EVIDENCE_TOOLS,
+  EVIDENCE_SCHEMA_VERSION,
+  BOUNDS as EVIDENCE_BOUNDS,
+} from "./evidence-capture.js";
+
+export {
   buildEvidence,
   writeEvidence,
   pruneEvidence,

@@ -64,7 +64,6 @@ export declare function runCaseAudit({ llm, packet, timeoutMs, maxTokens, signal
     decision?: undefined;
 } | {
     code?: undefined;
-    message?: undefined;
     ok: boolean;
     decision: {
         decision: string;
@@ -77,6 +76,7 @@ export declare function runCaseAudit({ llm, packet, timeoutMs, maxTokens, signal
         model: any;
         agentId: any;
     };
+    message?: undefined;
 }>;
 /** Provider/model/agent attribution, with no credentials and no prompt text. */
 export declare function attributionOf(result: any): {

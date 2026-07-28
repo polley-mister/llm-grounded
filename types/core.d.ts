@@ -15,4 +15,5 @@ export { parseConfig, appliesToAgent, factsApplyToAgent, DEFAULTS, CONFIG_JSON_S
 export { stateHome, varDir } from "./paths.js";
 export { resolveTrafficClass, isTrafficClass, TRAFFIC_CLASSES, } from "./traffic.js";
 export { buildTurnRecord, writeTurn, pruneTurns, behaviorIdentity, resetFingerprint, } from "./telemetry.js";
+export { captureEvidence, buildEvidenceRecord, createTurnBudget, writeEvidenceRecord, pruneEvidenceCapture, extractText, redactExcerpt, boundExcerpt, EVIDENCE_TOOLS, EVIDENCE_SCHEMA_VERSION, BOUNDS as EVIDENCE_BOUNDS, } from "./evidence-capture.js";
 export { buildEvidence, writeEvidence, pruneEvidence, evidenceFileName, EVIDENCE_VERSION, } from "./evidence.js";
