@@ -548,7 +548,19 @@ export function parseConfig(value) {
       }
       case "claimExtractionDir": {
         if (typeof raw !== "string" || !raw.trim()) return issue("claimExtractionDir must be a path");
-        out.claimExtractionDir = raw.trim();
+        // Enforced, not merely documented. The schema description said these
+        // must differ and nothing checked it, which is the same shape of
+        // promise-nobody-verified that took the plugin down on 0.3.0. Three
+        // stores, three record shapes, three retentions: sharing a path makes
+        // them one pile and the shorter retention silently governs all of it.
+        const claimDir = raw.trim();
+        if (claimDir === out.evidenceDir || claimDir === out.evidenceCaptureDir) {
+          return issue("claimExtractionDir must differ from evidenceDir and evidenceCaptureDir");
+        }
+        if (claimDir === out.telemetryDir) {
+          return issue("claimExtractionDir must differ from telemetryDir");
+        }
+        out.claimExtractionDir = claimDir;
         break;
       }
       case "claimExtractionAgentId": {
@@ -559,8 +571,8 @@ export function parseConfig(value) {
       case "claimExtractionRetentionDays":
       case "claimExtractionTimeoutMs":
       case "claimExtractionMaxTokens": {
-        if (!Number.isInteger(raw) || raw <= 0) return issue(`${field} must be a positive integer`);
-        out[field] = raw;
+        if (!Number.isInteger(raw) || raw <= 0) return issue(`${key} must be a positive integer`);
+        out[key] = raw;
         break;
       }
       case "claimExtractionTrafficClasses": {

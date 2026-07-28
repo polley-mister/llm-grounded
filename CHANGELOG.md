@@ -3,6 +3,38 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.3.1
+
+Repair. 0.3.0 did not register.
+
+A validation branch for three new integer config keys referenced `field` where
+the switch binds `key`, so the first config that actually set one threw
+`ReferenceError` during `register`, and the gateway came up with the plugin
+absent entirely — no grounding, no voice contract, no evidence capture. Caught
+by the deployment smoke check and rolled back to 0.2.7 within two minutes; the
+fault never reached a turn.
+
+The whole suite passed. It configures a handful of keys by hand and none of them
+was one of the three. A schema that advertises a key no test has ever set is a
+promise nobody has checked.
+
+### Fixed
+
+- The identifier. One word.
+- `claimExtractionDir` is now required to differ from `evidenceDir`,
+  `evidenceCaptureDir` and `telemetryDir`. The schema description said it must
+  and nothing enforced it — the same shape of unverified promise. Three record
+  shapes with three retentions sharing one path makes them one pile, and the
+  shortest retention quietly governs the lot.
+
+### Added
+
+- `tests/config-coverage.test.mjs`. Walks the published schema and configures
+  every property in it, singly and all at once, with values derived from the
+  schema itself, then registers the plugin against the result. A key added to
+  the schema without a working validation branch now fails by construction
+  rather than by someone remembering to write a test for it.
+
 ## 0.3.0
 
 Claim extraction runs in production, in shadow. This is the first release that
