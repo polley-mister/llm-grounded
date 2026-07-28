@@ -27,6 +27,25 @@ test("the internal id is not derived from host metadata", () => {
   }
 });
 
+test("ids are unique across indexes, not merely within one", () => {
+  // The counter alone restarts with the gateway, which put `t1` on two
+  // unrelated turns from two different days in the first corpus that joined on
+  // internalTurnId. Two indexes stand in for two processes here.
+  const a = createTurnIndex();
+  const b = createTurnIndex();
+  const first = a.register({ runId: "run-1" });
+  const second = b.register({ runId: "run-1" });
+  assert.notEqual(first, second, "two processes must not name different turns the same");
+});
+
+test("the id carries no host metadata even with a process prefix", () => {
+  const ix = createTurnIndex();
+  const id = ix.register({ runId: "run-1", sessionKey: "mc-chat-9", sessionId: "sid-1" });
+  for (const value of ["run-1", "mc-chat-9", "sid-1"]) {
+    assert.ok(!id.includes(value), `${id} leaks ${value}`);
+  }
+});
+
 test("registering the same turn twice does not mint a second id", () => {
   // before_prompt_build fires again on every prompt rebuild.
   const ix = createTurnIndex();

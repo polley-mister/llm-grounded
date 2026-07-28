@@ -21,6 +21,8 @@
 // meaningless on purpose: it is not a run id, so nothing can be tempted to
 // reconstruct it from host metadata instead of resolving it.
 
+import { randomUUID } from "node:crypto";
+
 /** Alias namespaces, so a run id equal to some session id cannot collide. */
 const RUN = "run";
 const SESSION_KEY = "skey";
@@ -44,14 +46,34 @@ function alias(namespace, value) {
 }
 
 /**
+ * One id per process, so a turn id is unique across a corpus and not merely
+ * within a run.
+ *
+ * The counter alone restarts with the gateway, which put `t1` on two unrelated
+ * turns from two different days in the first corpus that joined on it. A
+ * per-process prefix is the cheapest thing that fixes it without making the id
+ * mean anything: it is still not derived from host metadata, so nothing can
+ * reconstruct it instead of resolving it.
+ */
+const PROCESS_ID = randomUUID().slice(0, 8);
+
+/**
+ * Module-scoped, not per-index.
+ *
+ * Two indexes in one process would otherwise both start at 1 and name
+ * different turns identically — the same collision the process prefix fixes
+ * between processes, one level in.
+ */
+let mintedTurns = 0;
+
+/**
  * The alias index.
  *
  * @param {{newId?: () => string}} [opts] `newId` is injectable so tests and
  *   replays get stable ids; nothing about the value is meaningful.
  */
 export function createTurnIndex(opts = {}) {
-  let counter = 0;
-  const newId = typeof opts.newId === "function" ? opts.newId : () => `t${(counter += 1)}`;
+  const newId = typeof opts.newId === "function" ? opts.newId : () => `t_${PROCESS_ID}_${(mintedTurns += 1)}`;
 
   /** alias -> turn id */
   const aliases = new Map();

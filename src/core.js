@@ -209,6 +209,19 @@ export {
 // without a limit.
 
 export {
+  // Offline join of a turn record to the excerpts it cites: what resolved, what
+  // is missing, what no longer hashes to what was recorded. Reads through an
+  // injected reader, so it has no opinion about where either store lives. It
+  // never retrieves, never calls a model, and never labels support.
+  inspectTurn,
+  inspectTurns,
+  summarizeInspections,
+  INSPECTION_SCHEMA_VERSION,
+  JOIN_STATUSES,
+  EVIDENCE_RESOLUTIONS,
+} from "./inspection.js";
+
+export {
   // The Phase 0 turn logger: verdict, matched features, tools called, the
   // pre-revision draft, the delivered text, which gates fired, latency, model.
   buildTurnRecord,

@@ -1,0 +1,253 @@
+// Offline join: one turn, its claims, and the evidence it actually holds.
+//
+// This is the last step before claim verification, and it is deliberately the
+// dullest thing in the package. It reads two stores that already exist, matches
+// them by recorded id, checks that what is on disk is what was written, and
+// says what it found. It does not retrieve, does not call a model, does not
+// touch a response, and does not decide whether any claim holds.
+//
+// The one temptation it exists to refuse: a turn that called a search tool and
+// stored four excerpts looks, from a distance, like a turn whose answer was
+// supported. It is not. `supportLabels` stays empty here and `claimSupported`
+// stays null, exactly as they do in the capture path, because the whole point
+// of the exercise is to measure how often the two come apart. A join that
+// filled them in would be measuring itself.
+//
+// Failure modes are kept apart rather than collapsed into "no evidence":
+//
+//   missing        the id was recorded, the file is not there
+//   expired        the file is gone and the turn is older than retention,
+//                  so pruning is the explanation and nothing is wrong
+//   unreadable     the file is there and cannot be parsed
+//   corrupt        the file parses and its excerpt no longer hashes to what
+//                  was recorded
+//
+// The difference between the first two is the difference between a bug and a
+// retention policy working, and a corpus that cannot tell them apart will spend
+// a day looking for the bug.
+
+import { createHash } from "node:crypto";
+
+export const INSPECTION_SCHEMA_VERSION = "claim-evidence-inspection-v1";
+
+/**
+ * How a turn's evidence resolved, worst first.
+ *
+ * Precedence is by how much the result should be distrusted, not by how
+ * interesting it is. An integrity failure means the store is telling us
+ * something untrue, which outranks an abstention — abstention is an expected,
+ * measured outcome, and a corrupt store is a fault in the instrument.
+ */
+export const JOIN_STATUSES = Object.freeze([
+  "integrity_failure",
+  "partially_missing",
+  "evidence_expired",
+  "claim_extraction_abstained",
+  "no_evidence",
+  "complete",
+]);
+
+/** How one referenced excerpt resolved. */
+export const EVIDENCE_RESOLUTIONS = Object.freeze([
+  "resolved",
+  "missing",
+  "expired",
+  "unreadable",
+  "corrupt",
+]);
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function sha256(text) {
+  return `sha256:${createHash("sha256").update(String(text ?? ""), "utf8").digest("hex")}`;
+}
+
+function parseTime(value) {
+  const t = Date.parse(String(value ?? ""));
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * Resolve one recorded evidence id.
+ *
+ * `read` returns `{ok: true, record}`, `{ok: false, reason: "missing"}` or
+ * `{ok: false, reason: "unreadable"}`. Anything else is treated as unreadable:
+ * an unrecognised failure is not a reason to assume the evidence was fine.
+ */
+async function resolveEvidence(evidenceId, { read, prunedBefore }) {
+  let out;
+  try {
+    out = await read(evidenceId);
+  } catch {
+    return { evidenceId, resolution: "unreadable", detail: "read threw" };
+  }
+
+  if (!out?.ok) {
+    const missing = out?.reason === "missing";
+    if (!missing) return { evidenceId, resolution: "unreadable", detail: out?.reason ?? "unknown" };
+    // A file that is gone from a turn old enough to have been pruned is not
+    // lost. Reporting it as missing would make every corpus older than the
+    // retention window look broken.
+    if (prunedBefore !== null) {
+      return { evidenceId, resolution: "expired", detail: "older than the retention window" };
+    }
+    return { evidenceId, resolution: "missing", detail: "no such evidence record" };
+  }
+
+  const record = out.record;
+  const recorded = record?.excerptHash ?? null;
+  if (!recorded) {
+    return { evidenceId, resolution: "corrupt", detail: "record carries no excerpt hash" };
+  }
+  const actual = sha256(record.excerpt);
+  if (actual !== recorded) {
+    return { evidenceId, resolution: "corrupt", detail: "excerpt does not match its recorded hash" };
+  }
+
+  return {
+    evidenceId,
+    resolution: "resolved",
+    detail: null,
+    tool: record.tool ?? null,
+    sourceType: record.sourceType ?? null,
+    evidenceView: record.evidenceView ?? null,
+    transformsApplied: [...(record.transformsApplied ?? [])],
+    capturedAt: record.capturedAt ?? null,
+    source: record.source ?? null,
+    title: record.title ?? null,
+    query: record.query ?? null,
+    redacted: Boolean(record.redacted),
+    truncated: Boolean(record.truncated),
+    excerptHash: recorded,
+    // The excerpt itself is deliberately not copied here. Inspection output is
+    // a join, not a second copy of the evidence store, and an excerpt in it
+    // would be verbatim third-party content with no retention of its own.
+    excerptChars: typeof record.excerpt === "string" ? record.excerpt.length : 0,
+    // Never inferred, never filled in. A stored excerpt says nothing about
+    // whether a claim holds.
+    claimSupported: null,
+  };
+}
+
+function joinStatusFor(evidence, extraction, referenced) {
+  const has = (r) => evidence.some((e) => e.resolution === r);
+  if (has("corrupt") || has("unreadable")) return "integrity_failure";
+  if (has("missing")) return "partially_missing";
+  if (has("expired")) return "evidence_expired";
+  if (extraction?.status === "abstained") return "claim_extraction_abstained";
+  if (referenced === 0) return "no_evidence";
+  return "complete";
+}
+
+/**
+ * Join one turn record to its evidence.
+ *
+ * @param {object} turn a record from the turn telemetry store
+ * @param {{
+ *   readEvidence: (id: string) => Promise<{ok: boolean, record?: object, reason?: string}>,
+ *   extraction?: {status: string, claims?: object[], abstentionReason?: string}|null,
+ *   retentionDays?: number,
+ *   now?: () => number,
+ * }} opts
+ */
+export async function inspectTurn(turn, opts = {}) {
+  const read = opts.readEvidence;
+  if (typeof read !== "function") throw new TypeError("inspectTurn requires readEvidence");
+
+  const retentionDays = Number.isFinite(opts.retentionDays) ? opts.retentionDays : 14;
+  const now = typeof opts.now === "function" ? opts.now() : Date.now();
+  const turnAt = parseTime(turn?.ts);
+  // Null unless this turn is old enough for pruning to explain a missing file.
+  const prunedBefore = turnAt !== null && turnAt < now - retentionDays * DAY_MS ? turnAt : null;
+
+  // Strictly the recorded ids, in the recorded order. Not a directory listing:
+  // evidence that the turn does not reference is not this turn's evidence, and
+  // ordering is the only thing that says which retrieval came first.
+  const ids = Array.isArray(turn?.evidenceIds) ? turn.evidenceIds.filter((id) => typeof id === "string") : [];
+
+  const evidence = [];
+  for (const id of ids) {
+    evidence.push(await resolveEvidence(id, { read, prunedBefore }));
+  }
+
+  const extraction = opts.extraction
+    ? {
+        status: opts.extraction.status ?? "not_run",
+        claims: opts.extraction.claims ?? [],
+        ...(opts.extraction.abstentionReason ? { abstentionReason: opts.extraction.abstentionReason } : {}),
+      }
+    // Extraction is offline-only and not part of a turn record, so a turn
+    // inspected without one has not abstained — it was never asked.
+    : { status: "not_run", claims: [] };
+
+  const counts = Object.fromEntries(
+    EVIDENCE_RESOLUTIONS.map((r) => [r, evidence.filter((e) => e.resolution === r).length]),
+  );
+
+  return {
+    schemaVersion: INSPECTION_SCHEMA_VERSION,
+    // The join identity. Host identifiers are carried as metadata only: they
+    // are how the turn was named by whichever hook saw it, and two of them can
+    // name the same turn.
+    internalTurnId: turn?.internalTurnId ?? null,
+    turnId: turn?.turnId ?? null,
+    sessionId: turn?.sessionId ?? null,
+    agentId: turn?.agentId ?? null,
+    ts: turn?.ts ?? null,
+    pluginVersion: turn?.pluginVersion ?? null,
+    behaviorEpoch: turn?.behaviorEpoch ?? null,
+
+    // The stored decision, copied. Not recomputed, and not derived from the
+    // session id sitting next to it.
+    trafficClass: turn?.trafficClass ?? null,
+    trafficResolutionStatus: turn?.trafficResolutionStatus ?? null,
+
+    draft: turn?.draft ?? null,
+    final: turn?.final ?? null,
+
+    claimExtraction: extraction,
+
+    evidence,
+    evidenceCounts: counts,
+    evidenceReferenced: ids.length,
+    // What capture itself said, so a join that finds two excerpts on a turn
+    // that reported four losses does not read as a healthy turn.
+    evidenceCaptureStatus: turn?.evidenceCaptureStatus ?? null,
+    evidenceCaptureLostCount: turn?.evidenceCaptureLostCount ?? 0,
+
+    joinStatus: joinStatusFor(evidence, extraction, ids.length),
+    // Left empty by construction. Nothing in this file may write to it: a label
+    // here would be an assertion about support derived from the presence of
+    // evidence, which is the exact error the project exists to measure.
+    supportLabels: [],
+  };
+}
+
+/**
+ * Join many turns, in the order given.
+ *
+ * Sequential on purpose. This reads a private evidence store on a machine that
+ * is also serving an agent, and the work is not urgent enough to be worth
+ * competing for its disk.
+ */
+export async function inspectTurns(turns, opts = {}) {
+  const out = [];
+  for (const turn of turns ?? []) out.push(await inspectTurn(turn, opts));
+  return out;
+}
+
+/** Counts by join status, for a corpus summary. */
+export function summarizeInspections(inspections) {
+  const byStatus = Object.fromEntries(JOIN_STATUSES.map((s) => [s, 0]));
+  const byTraffic = {};
+  let referenced = 0;
+  let resolved = 0;
+  for (const i of inspections ?? []) {
+    if (i?.joinStatus in byStatus) byStatus[i.joinStatus] += 1;
+    const cls = i?.trafficClass ?? "unknown";
+    byTraffic[cls] = (byTraffic[cls] ?? 0) + 1;
+    referenced += i?.evidenceReferenced ?? 0;
+    resolved += i?.evidenceCounts?.resolved ?? 0;
+  }
+  return { turns: (inspections ?? []).length, byStatus, byTraffic, evidenceReferenced: referenced, evidenceResolved: resolved };
+}
