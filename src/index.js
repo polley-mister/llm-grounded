@@ -1170,12 +1170,6 @@ export function createPlugin(deps = {}) {
     return isFailClosedText(text);
   }
 
-  /** Grounding obligation for a turn: hard triggers only. */
-  function hardTriggerKind(turn) {
-    const hard = hardTrigger(turn);
-    return hard.kind === "web" || hard.kind === "memory" ? hard.kind : null;
-  }
-
   /**
    * The host metadata a hook has, in the shape the store resolves.
    *
