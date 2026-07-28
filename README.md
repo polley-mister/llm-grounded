@@ -212,6 +212,8 @@ suggestion and nothing else.
   cost of each and the shape of the fix
 - [Telemetry](docs/TELEMETRY.md): the record format and how to compute a
   false-positive rate from it
+- [Releasing](docs/RELEASING.md): why every version gets a tag and only minor
+  bumps get a release, and the deployment gate that has to pass
 
 ## The routing vectors are reusable on their own
 
