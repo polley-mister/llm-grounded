@@ -42,6 +42,7 @@ function parseArgs(argv) {
     else if (a === "--llm-module") out.llmModule = next();
     else if (a === "--split") out.split = next();
     else if (a === "--limit") out.limit = Number(next()) || Infinity;
+    else if (a === "--rescore") out.rescore = next();
     else if (a === "--dry-run") out.dryRun = true;
     else if (a === "--help" || a === "-h") out.help = true;
   }
@@ -57,6 +58,7 @@ claims:extract — offline claim extraction over a corpus or historical telemetr
   --llm-module <path>       module exporting createLlm(); omit to force abstention
   --split <dev|validation|test>   restrict to one split
   --limit <n>               cap records processed
+  --rescore <file.jsonl>    re-score a previous run offline; calls no model
   --dry-run                 do not write output
 `;
 
@@ -169,6 +171,15 @@ function score(records) {
     byStatus: {},
     abstentionReasons: {},
     labelled: 0,
+    // Turns whose extraction abstained. Excluded from recall denominators: an
+    // abstention is a different failure from a miss, and mixing them means a
+    // provider hiccup reads as a recall problem and neither can be fixed on
+    // purpose.
+    labelledAbstained: 0,
+    // Gold claims marked material:false. Recall over claims defined as not
+    // mattering measures the wrong thing, so they are counted apart.
+    immaterialGold: 0,
+    immaterialFound: 0,
     conversationalTurns: 0,
     conversationalWithMaterialClaim: 0,
     perType: {},
@@ -197,6 +208,11 @@ function score(records) {
     m.legacyShapedClaims += r.predictedClaims.filter((c) => c.v2Shape === false).length;
     if (!Array.isArray(r.goldClaims)) continue;
 
+    if (r.extractionStatus === "abstained") {
+      m.labelledAbstained += 1;
+      continue;
+    }
+
     m.labelled += 1;
     m.goldClaims += r.goldClaims.length;
     const material = r.predictedClaims.filter((c) => c.material && c.verificationTarget);
@@ -218,10 +234,15 @@ function score(records) {
     }
 
     for (const g of r.goldClaims) {
+      const found = r.predictedClaims.some((p) => matches(p, g));
+      if (g.material === false) {
+        m.immaterialGold += 1;
+        if (found) m.immaterialFound += 1;
+        continue;
+      }
       const t = g.claimType;
       m.perType[t] ??= { gold: 0, found: 0 };
       m.perType[t].gold += 1;
-      const found = r.predictedClaims.some((p) => matches(p, g));
       if (found) m.perType[t].found += 1;
       if (r.scenarioFamily === "bare-answer") {
         m.bareAnswer.gold += 1;
@@ -244,11 +265,14 @@ function report(m) {
   }
   lines.push("");
   lines.push(`predicted claims:   ${m.predictedClaims}   legacy-shaped: ${m.legacyShapedClaims}`);
-  lines.push(`labelled turns:     ${m.labelled}   gold claims: ${m.goldClaims}`);
+  lines.push(
+    `labelled turns:     ${m.labelled} scored, ${m.labelledAbstained} abstained (excluded from recall)`,
+  );
+  lines.push(`gold claims:        ${m.goldClaims} material, ${m.immaterialGold} immaterial`);
 
   if (m.labelled) {
     lines.push("");
-    lines.push("recall by claim type (labelled turns only):");
+    lines.push("recall by claim type (material gold, extraction succeeded):");
     for (const [t, s] of Object.entries(m.perType).sort()) {
       lines.push(`  ${t.padEnd(26)} ${s.found}/${s.gold}  ${pct(s.found, s.gold)}`);
     }
@@ -265,6 +289,12 @@ function report(m) {
       lines.push(
         `bare-answer claim recall: ` +
           `${m.bareAnswer.found}/${m.bareAnswer.gold}  ${pct(m.bareAnswer.found, m.bareAnswer.gold)}`,
+      );
+    }
+    if (m.immaterialGold) {
+      lines.push(
+        `immaterial gold detected: ${m.immaterialFound}/${m.immaterialGold}` +
+          `  (not a recall target; extracting these is neither required nor wrong)`,
       );
     }
     lines.push("");
@@ -290,6 +320,18 @@ function report(m) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.rescore) {
+    // Re-scoring reads recorded output. It cannot change what the model said,
+    // which is the point: a scoring fix must be auditable against the same
+    // extraction rather than requiring a fresh run that also varies.
+    const prior = (await readFile(args.rescore, "utf8"))
+      .split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l));
+    console.log(`re-scoring ${prior.length} records from ${args.rescore}`);
+    console.log("");
+    console.log(report(score(prior)));
+    return;
+  }
+
   if (args.help || (!args.corpus && !args.telemetry)) {
     console.log(USAGE.trim());
     process.exit(args.help ? 0 : 1);

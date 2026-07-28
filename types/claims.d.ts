@@ -6,7 +6,7 @@ export declare const MODALITIES: readonly string[];
 export declare const EVIDENCE_KINDS: readonly string[];
 export declare const ABSTENTION_REASONS: readonly string[];
 export declare const SCHEMA_VERSION = "claims-v2";
-export declare const PROMPT_VERSION = "claims-v1";
+export declare const PROMPT_VERSION = "claims-v2";
 /**
  * Whether a claim was produced in the v2 shape.
  *
