@@ -156,12 +156,39 @@ def inspect_runtime():
         return None
 
 
-def gateway_running():
-    result = subprocess.run(
-        ["systemctl", "--user", "is-active", "openclaw-gateway.service"],
-        capture_output=True, text=True,
-    )
-    return result.stdout.strip() == "active"
+def gateway_state():
+    """
+    'active', 'inactive', or 'unknown'.
+
+    The three are not two. `systemctl --user` needs a session bus, and under
+    `su - user` there is none — the first run of this gate could not consult the
+    service at all, read that as "not running", and rolled back a perfectly good
+    deployment. A check that cannot tell "I can't see it" from "it's down" will
+    reject every deployment it is asked about.
+
+    XDG_RUNTIME_DIR is supplied when absent so the usual case simply works; an
+    environment where it still cannot be reached reports 'unknown', and the
+    caller falls back to what the host itself says it loaded.
+    """
+    env = dict(os.environ)
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "is-active", "openclaw-gateway.service"],
+            capture_output=True, text=True, env=env,
+        )
+    except OSError:
+        return "unknown"
+    state = result.stdout.strip()
+    if state == "active":
+        return "active"
+    # `failed` and `inactive` are real answers. Anything else — a bus error, an
+    # empty reply, `activating` mid-restart — is not a verdict.
+    if state in ("inactive", "failed"):
+        return "inactive"
+    if "Failed to connect" in (result.stderr or ""):
+        return "unknown"
+    return "unknown"
 
 
 def epoch_resolved(epoch, since):
@@ -183,11 +210,18 @@ def verify(artifact, version, epoch, since, timeout):
     """
     deadline = time.time() + timeout
     last = "the gateway never reported the new artifact"
+    warned_unknown = False
     while time.time() < deadline:
         time.sleep(3)
-        if not gateway_running():
-            last = "the gateway process is not active"
+        state = gateway_state()
+        if state == "inactive":
+            last = "the gateway service is not active"
             continue
+        if state == "unknown" and not warned_unknown:
+            # Said once, not every three seconds. The host's own report of what
+            # it loaded is the stronger signal anyway.
+            log("note: the service state could not be read; relying on the host's plugin report")
+            warned_unknown = True
         plugin = inspect_runtime()
         if plugin is None:
             last = "the host could not be asked what it loaded"
