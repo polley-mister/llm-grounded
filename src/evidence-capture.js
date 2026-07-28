@@ -26,7 +26,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { extractEvidenceItems } from "./evidence-adapters.js";
+import { extractEvidenceItemsBounded } from "./evidence-adapters.js";
 import { looksSecret } from "./values.js";
 import { varDir } from "./paths.js";
 
@@ -319,6 +319,22 @@ export async function pruneEvidenceCapture(dir, retentionDays = DEFAULT_RETENTIO
  * captured nothing because the budget was spent" are different facts about a
  * turn.
  */
+/**
+ * Reasons that mean an eligible excerpt was dropped, rather than never being
+ * eligible in the first place.
+ *
+ * The distinction decides whether a turn reads as `complete` or `partial`. A
+ * result with no text in it was never going to be captured and says nothing
+ * about the health of capture; a budget that ran out means the turn holds less
+ * evidence than it produced, which a later join has to know.
+ */
+const LOSS_REASONS = new Set(["item_limit", "call_limit", "turn_char_limit", "write_failed"]);
+
+/** True for a reason that means evidence was lost rather than never owed. */
+export function isEvidenceLoss(reason) {
+  return LOSS_REASONS.has(reason);
+}
+
 export async function captureToolCallEvidence({
   dir,
   budget,
@@ -330,19 +346,29 @@ export async function captureToolCallEvidence({
   fsOps,
   ...rest
 }) {
-  const items = extractEvidenceItems(tool, result, {
+  const { items, dropped } = extractEvidenceItemsBounded(tool, result, {
     maxItems: bounds.itemsPerCall,
     runtimeTools,
   });
   if (!items.length) {
-    return { evidenceIds: [], captured: 0, skipped: 1, failed: 0, reasons: ["no_evidence_items"] };
+    return {
+      evidenceIds: [], captured: 0, skipped: 1, lost: 0, failed: 0,
+      reasons: ["no_evidence_items"], reasonCounts: { no_evidence_items: 1 },
+    };
   }
 
   const evidenceIds = [];
   const reasons = [];
+  const reasonCounts = {};
   let captured = 0;
   let skipped = 0;
+  // Evidence this call produced and the per-call cap would not let through.
+  let lost = dropped;
   let failed = 0;
+  if (dropped > 0) {
+    reasons.push("call_limit");
+    reasonCounts.call_limit = dropped;
+  }
 
   for (const evidenceItem of items) {
     const out = await captureEvidence({ dir, budget, logger, tool, result, evidenceItem, fsOps, ...rest });
@@ -352,10 +378,12 @@ export async function captureToolCallEvidence({
       continue;
     }
     if (out.reason === "write_failed") failed += 1;
+    else if (isEvidenceLoss(out.reason)) lost += 1;
     else skipped += 1;
     reasons.push(out.reason);
+    reasonCounts[out.reason] = (reasonCounts[out.reason] ?? 0) + 1;
   }
-  return { evidenceIds, captured, skipped, failed, reasons };
+  return { evidenceIds, captured, skipped, lost, failed, reasons, reasonCounts };
 }
 
 export async function captureEvidence({ dir, budget, logger, fsOps, ...input }) {

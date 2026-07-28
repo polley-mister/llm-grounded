@@ -55,9 +55,11 @@ export function buildTurnRecord(entry: any, extra?: {}): {
     evidenceCaptureAttempted: boolean;
     evidenceCapturedCount: any;
     evidenceCaptureSkippedCount: any;
+    evidenceCaptureLostCount: any;
     evidenceCaptureFailedCount: any;
     evidenceCaptureStatus: string;
     evidenceCaptureSkipReason: any;
+    evidenceCaptureSkipReasons: any;
     runtimeConfigResolved: boolean;
     runtimeConfigReason: any;
     overlayConfigResolved: boolean;

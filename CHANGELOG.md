@@ -3,6 +3,61 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.2.7
+
+Telemetry semantics for evidence capture. No change to what is captured, only
+to what a record says about it. Existing records are not rewritten.
+
+Production turns were reporting this:
+
+```
+evidenceCaptureStatus     complete
+evidenceCapturedCount     4
+evidenceCaptureSkipReason tool_not_allowlisted
+```
+
+Three true statements that together read as a failure. The turn called one tool
+with no adapter and another that captured four excerpts. The singular field held
+the first skip of any kind, while its name reads as "why did evidence capture
+not happen". A corpus filtered on it would have counted healthy turns as faults.
+
+### Changed
+
+- A *skip* and a *loss* are now different things. A skip is something that was
+  never eligible — a tool with no adapter, a result with no text. A loss is
+  something eligible that was dropped — a spent budget, a capture that timed
+  out, a write that failed. Only a loss moves a turn off `complete`:
+
+```
+complete        something captured, nothing eligible was lost
+partial         something captured, and something eligible was lost
+failed          capture was attempted, nothing captured, something was lost
+not_applicable  nothing was eligible for capture
+unavailable     capture could not run — a fault, not a choice
+```
+
+  Previously "attempted, captured nothing, lost nothing" reported `failed`,
+  which counts a turn whose results simply held nothing capturable as a fault.
+  It now reports `not_applicable`.
+- `evidenceCaptureSkipReason` is populated only when nothing was captured. It is
+  singular and reads as terminal, so it now answers only when it is.
+
+### Added
+
+- `evidenceCaptureSkipReasons`, every reason the turn saw with counts, so a turn
+  that captured evidence and also skipped an unrelated tool call reports both
+  rather than choosing one to be the headline.
+- `evidenceCaptureLostCount`, counted apart from `evidenceCaptureSkippedCount`.
+- The per-call item cap is reported. It was applied inside the adapter and again
+  by a `slice`, and neither said anything: a search returning six usable hits
+  under a cap of two produced two excerpts and a turn that read `complete` —
+  true of what was stored, misleading about what was seen. The excess is now
+  counted exactly, as `call_limit`. A cap that cannot be observed is
+  indistinguishable from there being nothing more to capture.
+- A capture that times out is recorded as a loss rather than a skip.
+- `tests/evidence-status.test.mjs`, including the production case above as a
+  named regression.
+
 ## 0.2.6
 
 Correctness, behaviour-neutral: one turn, one identity, one place to keep its

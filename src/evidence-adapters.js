@@ -138,13 +138,32 @@ export const ADAPTERS = Object.freeze({
  * "generically".
  */
 export function extractEvidenceItems(tool, result, opts = {}) {
+  return extractEvidenceItemsBounded(tool, result, opts).items;
+}
+
+/**
+ * The same extraction, and how much it had to leave behind.
+ *
+ * The per-call cap used to be applied by the adapter and then again by a
+ * `slice`, and neither said anything. A search returning six usable hits under
+ * a cap of two produced two excerpts and a turn that read `complete` — true of
+ * what was stored, misleading about what was seen. A cap that cannot be
+ * observed is indistinguishable from there being nothing more to capture.
+ *
+ * The adapter is asked for everything so the excess is an exact count rather
+ * than "at least one more". The work is bounded by the tool result already in
+ * memory; the expensive part, writing records, still happens only for the items
+ * that survive the cap.
+ */
+export function extractEvidenceItemsBounded(tool, result, opts = {}) {
   const adapter = ADAPTERS[tool] ?? (opts.runtimeTools?.includes(tool) ? extractRuntimeEvidence : null);
-  if (!adapter) return [];
+  if (!adapter) return { items: [], dropped: 0 };
   try {
-    const items = adapter(result, opts) ?? [];
-    return items.filter(Boolean).slice(0, opts.maxItems ?? 5);
+    const cap = opts.maxItems ?? 5;
+    const found = (adapter(result, { ...opts, maxItems: Number.MAX_SAFE_INTEGER }) ?? []).filter(Boolean);
+    return { items: found.slice(0, cap), dropped: Math.max(0, found.length - cap) };
   } catch {
     // A malformed payload yields no evidence rather than a partial guess.
-    return [];
+    return { items: [], dropped: 0 };
   }
 }

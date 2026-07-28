@@ -191,6 +191,20 @@ export function resetBuildInfo() {
  * lost is a different state from either "worked" or "failed", and collapsing it
  * would hide systematic truncation behind an apparent success.
  */
+/**
+ * What happened to evidence capture on this turn.
+ *
+ * Only a *loss* moves a turn off `complete`. A skip does not: a turn that
+ * called one tool with no adapter and another that captured four excerpts has
+ * lost nothing, and reading that as degraded would put a large share of
+ * ordinary turns in the `partial` bucket for no reason.
+ *
+ *   complete        something captured, nothing eligible was lost
+ *   partial         something captured, and something eligible was lost
+ *   failed          capture was attempted, nothing captured, something was lost
+ *   not_applicable  nothing was eligible for capture
+ *   unavailable     capture could not run — a fault, not a choice
+ */
 function evidenceCaptureStatus(entry) {
   // A build that could not read its own configuration did not decline to
   // capture; it was unable to. Reporting that as not_applicable would make a
@@ -201,9 +215,25 @@ function evidenceCaptureStatus(entry) {
   if (entry?.evidenceCaptureSkipReason === "traffic_class_unresolved") return "unavailable";
   if (!entry?.evidenceCaptureAttempted) return "not_applicable";
   const captured = entry.evidenceCapturedCount ?? 0;
-  const lost = (entry.evidenceCaptureSkippedCount ?? 0) + (entry.evidenceCaptureFailedCount ?? 0);
-  if (captured === 0) return "failed";
-  return lost > 0 ? "partial" : "complete";
+  const lost = (entry.evidenceCaptureLostCount ?? 0) + (entry.evidenceCaptureFailedCount ?? 0);
+  if (captured > 0) return lost > 0 ? "partial" : "complete";
+  if (lost > 0) return "failed";
+  // Attempted, captured nothing, lost nothing: there was nothing to capture.
+  return "not_applicable";
+}
+
+/**
+ * The one terminal reason, or none.
+ *
+ * Singular, and it reads as "why did evidence capture not happen", so it is
+ * answered only when capture did not happen. It used to hold the first skip of
+ * any kind, which produced records saying `complete`, four captured, and
+ * `tool_not_allowlisted` — three true statements that together read as a
+ * failure. Mixed turns are described by the counts and the reason map instead.
+ */
+function evidenceCaptureSkipReason(entry) {
+  if ((entry?.evidenceCapturedCount ?? 0) > 0) return null;
+  return entry?.evidenceCaptureSkipReason ?? null;
 }
 
 export function buildTurnRecord(entry, extra = {}) {
@@ -288,9 +318,16 @@ export function buildTurnRecord(entry, extra = {}) {
     evidenceCaptureAttempted: Boolean(entry?.evidenceCaptureAttempted),
     evidenceCapturedCount: entry?.evidenceCapturedCount ?? 0,
     evidenceCaptureSkippedCount: entry?.evidenceCaptureSkippedCount ?? 0,
+    // Eligible excerpts that were dropped. Distinct from a skip, and the only
+    // thing that makes a turn partial.
+    evidenceCaptureLostCount: entry?.evidenceCaptureLostCount ?? 0,
     evidenceCaptureFailedCount: entry?.evidenceCaptureFailedCount ?? 0,
     evidenceCaptureStatus: evidenceCaptureStatus(entry),
-    evidenceCaptureSkipReason: entry?.evidenceCaptureSkipReason ?? null,
+    evidenceCaptureSkipReason: evidenceCaptureSkipReason(entry),
+    // Every reason this turn saw, with counts. A turn that captured evidence
+    // and also skipped an unrelated tool call reports both here rather than
+    // choosing one to be the headline.
+    evidenceCaptureSkipReasons: { ...(entry?.evidenceCaptureSkipReasons ?? {}) },
     runtimeConfigResolved: entry?.runtimeConfigResolved !== false,
     runtimeConfigReason: entry?.runtimeConfigReason ?? null,
     overlayConfigResolved: entry?.overlayConfigResolved !== false,

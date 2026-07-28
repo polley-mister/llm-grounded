@@ -89,20 +89,8 @@ export function writeEvidenceRecord(dir: any, record: any, logger: any, fsOps?: 
  * than telemetry's by default.
  */
 export function pruneEvidenceCapture(dir: any, retentionDays: number, logger: any, now?: () => number): Promise<number>;
-/**
- * Capture one tool result end to end.
- *
- * Returns what telemetry should record: references and outcome flags, never
- * excerpt text.
- */
-/**
- * Capture every evidence item from one successful tool call.
- *
- * Bounded three ways — per item, per call, per turn — and every rejection is
- * reported rather than silently dropped, because "we captured nothing" and "we
- * captured nothing because the budget was spent" are different facts about a
- * turn.
- */
+/** True for a reason that means evidence was lost rather than never owed. */
+export function isEvidenceLoss(reason: any): boolean;
 export function captureToolCallEvidence({ dir, budget, logger, tool, result, runtimeTools, bounds, fsOps, ...rest }: {
     [x: string]: any;
     dir: any;
@@ -122,8 +110,22 @@ export function captureToolCallEvidence({ dir, budget, logger, tool, result, run
     evidenceIds: any[];
     captured: number;
     skipped: number;
+    lost: number;
+    failed: number;
+    reasons: string[];
+    reasonCounts: {
+        no_evidence_items: number;
+    };
+} | {
+    evidenceIds: any[];
+    captured: number;
+    skipped: number;
+    lost: number;
     failed: number;
     reasons: any[];
+    reasonCounts: {
+        call_limit: number;
+    };
 }>;
 export function captureEvidence({ dir, budget, logger, fsOps, ...input }: {
     [x: string]: any;

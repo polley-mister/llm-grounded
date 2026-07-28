@@ -94,6 +94,8 @@ const DEFAULT_MAX_ENTRIES = 200;
  * @property {boolean} factFailClosed
  * @property {import("./traffic.js").TrafficVerdict & {resolvedAt: string, identity: object}|null} traffic
  * @property {boolean} trafficIdentityMismatch
+ * @property {number} evidenceCaptureLostCount eligible excerpts dropped, not merely ineligible
+ * @property {Record<string, number>} evidenceCaptureSkipReasons every reason, with counts
  * @property {{features: object, startedAt: number|null, drafts: string[],
  *             tools: object[], policy: object|null, blockedTools: object[]}} telemetry
  * @property {number} createdAt
@@ -252,9 +254,18 @@ export function createGroundingStore(opts = {}) {
         evidenceIds: [],
         evidenceCaptureAttempted: false,
         evidenceCapturedCount: 0,
+        // Never eligible: a tool with no adapter, a result with no text.
         evidenceCaptureSkippedCount: 0,
+        // Eligible and dropped anyway: a budget spent, a capture timed out.
+        // Counted apart from skips because only this makes a turn `partial`.
+        evidenceCaptureLostCount: 0,
         evidenceCaptureFailedCount: 0,
+        // The first reason, kept for the diagnostics that read it directly.
+        // What reaches a turn record is derived from the counts below.
         evidenceCaptureSkipReason: null,
+        // Every reason and how often, so a turn that captured some evidence and
+        // skipped an unrelated tool call can say both.
+        evidenceCaptureSkipReasons: {},
         // Whether the plugin could resolve its own configuration at all.
         // Distinct from "the feature is off": one is a fault, the other is a
         // choice, and reporting them the same way hides the fault.
@@ -583,6 +594,7 @@ export function createGroundingStore(opts = {}) {
       if (!entry) return null;
       // First reason wins: the earliest gate is the actionable one.
       entry.evidenceCaptureSkipReason ??= reason;
+      entry.evidenceCaptureSkipReasons[reason] = (entry.evidenceCaptureSkipReasons[reason] ?? 0) + 1;
       entry.updatedAt = now();
       return entry;
     },
@@ -594,7 +606,11 @@ export function createGroundingStore(opts = {}) {
       for (const id of outcome.evidenceIds ?? []) entry.evidenceIds.push(id);
       entry.evidenceCapturedCount += outcome.captured ?? 0;
       entry.evidenceCaptureSkippedCount += outcome.skipped ?? 0;
+      entry.evidenceCaptureLostCount += outcome.lost ?? 0;
       entry.evidenceCaptureFailedCount += outcome.failed ?? 0;
+      for (const [reason, count] of Object.entries(outcome.reasonCounts ?? {})) {
+        entry.evidenceCaptureSkipReasons[reason] = (entry.evidenceCaptureSkipReasons[reason] ?? 0) + count;
+      }
       entry.updatedAt = now();
       return entry;
     },

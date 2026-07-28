@@ -1110,7 +1110,12 @@ export function createPlugin(deps = {}) {
       ]);
 
       if (outcome?.timedOut) {
-        store?.noteEvidenceCapture?.(key, { evidenceIds: [], captured: 0, skipped: 1, failed: 0 });
+        // A loss, not a skip. The excerpt was eligible and the turn simply ran
+        // out of time for it, which is exactly what makes a turn `partial`.
+        store?.noteEvidenceCapture?.(key, {
+          evidenceIds: [], captured: 0, skipped: 0, lost: 1, failed: 0,
+          reasonCounts: { capture_timeout: 1 },
+        });
         log("warn", `llmGrounded: evidence capture timed out after ${timeoutMs}ms`);
         return;
       }

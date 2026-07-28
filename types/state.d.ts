@@ -264,6 +264,14 @@ export type GroundingEntry = {
         identity: object;
     }) | null;
     trafficIdentityMismatch: boolean;
+    /**
+     * eligible excerpts dropped, not merely ineligible
+     */
+    evidenceCaptureLostCount: number;
+    /**
+     * every reason, with counts
+     */
+    evidenceCaptureSkipReasons: Record<string, number>;
     telemetry: {
         features: object;
         startedAt: number | null;
