@@ -86,7 +86,13 @@ test("the barrel does not omit a module the adapter treats as core", () => {
   // If a new src/*.js appears, it is either part of the core surface or
   // deliberately host-only. Listing the host-only set here forces that to be a
   // decision rather than an oversight.
-  const HOST_ONLY = new Set(["index.js", "core.js", "facts-tool.js", "facts-overlay.js", "vault-txn.js", "case-audit.js"]);
+  // authorization.js is host-only: it answers questions about a host's tool
+  // exposure and session shapes, which a framework-independent core has no
+  // opinion on.
+  const HOST_ONLY = new Set([
+    "index.js", "core.js", "facts-tool.js", "facts-overlay.js", "vault-txn.js",
+    "case-audit.js", "authorization.js",
+  ]);
   const modules = readdirSync(SRC).filter((f) => f.endsWith(".js"));
   const closure = reachable("core.js");
   const orphaned = modules.filter((f) => !HOST_ONLY.has(f) && !closure.has(f));

@@ -431,6 +431,19 @@ export function createGroundingStore(opts = {}) {
     },
 
     /**
+     * Whether this tool call was ever bound, regardless of whether its turn
+     * still exists.
+     *
+     * `resolveToolCall` answers null for both "never bound" and "bound to a
+     * turn that has since gone", which made the second indistinguishable from
+     * the first — a timing fault reported as a wiring fault, and the
+     * `no-turn-state` branch that existed to say so was unreachable.
+     */
+    hasToolCallBinding(toolCallId) {
+      return Boolean(toolCallId) && pendingCalls.has(toolCallId);
+    },
+
+    /**
      * Resolve a bound tool call to its turn key. Single-use: the binding is
      * consumed, so a replayed tool call id cannot reach a live turn twice.
      */

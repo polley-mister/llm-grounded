@@ -6,40 +6,6 @@
  * fabrication these prechecks exist to stop.
  */
 export function containsValue(haystack: any, needle: any): boolean;
-/**
- * Session keys that may run a fact transaction.
- *
- * `senderIsOwner` alone is not enough: it stays true when the operator speaks in a
- * group or a channel, and a durable personal fact must not be minted from a
- * shared conversation. OpenClaw collapses direct chats to the agent's canonical
- * main bucket (`agent:<id>:main…`) or a per-peer direct bucket
- * (`…:direct:<peer>`), and keeps group/channel sessions isolated under `:group:`
- * / `:channel:` segments. Explicit keys — a front-end console and one-shot
- * CLI runs — use OpenClaw's canonical `agent:<id>:explicit:<session-id>`
- * shape. The Gateway marks authenticated operator calls as owner requests;
- * recognizing that canonical shape keeps the console direct while the
- * group/channel exclusions above remain structural. Non-canonical explicit
- * keys may still be admitted through the configured prefix allowlist.
- *
- * Known OpenClaw limitation: a tool context exposes `sessionKey`,
- * `messageChannel` and `oneShotCliRun`, but no first-class "this is a DM" flag.
- * Anything that does not positively match one of the direct shapes is refused
- * rather than guessed at, so an unrecognized native channel context fails
- * closed.
- */
-export function isDirectOwnerSession(sessionKey: any, ctx: any, cfg: any): {
-    ok: boolean;
-    reason: string;
-};
-/**
- * OpenClaw reserves `senderIsOwner` for an allowlisted channel sender or a
- * Gateway client with operator.admin. the console deliberately connects
- * with narrower operator read/write scopes, so its authenticated loopback
- * calls arrive as `senderIsOwner: false`. Runtime-owned explicit sessions,
- * configured operator prefixes, and one-shot CLI runs remain trusted direct
- * control-plane contexts.
- */
-export function isFactOperatorAuthorized(ctx: any, direct: any): boolean;
 /** Structural validation of the model's proposal, before anything is consulted. */
 export function validateProposal(params: any): {
     ok: boolean;
@@ -185,3 +151,4 @@ export const FACT_TOOL_PARAMETERS: Readonly<{
     };
 }>;
 export const FACT_TOOL_DESCRIPTION: string;
+export { isDirectOwnerSession, isFactOperatorAuthorized } from "./authorization.js";

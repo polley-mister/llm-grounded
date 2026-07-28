@@ -21,6 +21,7 @@
 //   6. audit        — CASE approves, on strict JSON
 //   7. transaction  — Vault Tools commits, or refuses
 
+import { mayInvokeFactTools, mayMutateFacts } from "./authorization.js";
 import { AUDIT_PURPOSE, buildAuditPacket, runCaseAudit } from "./case-audit.js";
 import { commitFactTransaction } from "./vault-txn.js";
 import { looksSecret, statesValue, valuesEquivalent } from "./values.js";
@@ -74,6 +75,11 @@ function textResult(text, details) {
   return { content: [{ type: "text", text }], details: details ?? {} };
 }
 
+// The two session predicates moved to authorization.js, where the boundaries
+// that consume them live. Re-exported here because they are part of this
+// module's published surface.
+export { isDirectOwnerSession, isFactOperatorAuthorized } from "./authorization.js";
+
 function failure(code, message, extra = {}) {
   return textResult(`vault_fact_commit refused: ${message}`, {
     ok: false,
@@ -91,74 +97,6 @@ function failure(code, message, extra = {}) {
  */
 export function containsValue(haystack, needle) {
   return statesValue(haystack, needle);
-}
-
-/**
- * Session keys that may run a fact transaction.
- *
- * `senderIsOwner` alone is not enough: it stays true when the operator speaks in a
- * group or a channel, and a durable personal fact must not be minted from a
- * shared conversation. OpenClaw collapses direct chats to the agent's canonical
- * main bucket (`agent:<id>:main…`) or a per-peer direct bucket
- * (`…:direct:<peer>`), and keeps group/channel sessions isolated under `:group:`
- * / `:channel:` segments. Explicit keys — a front-end console and one-shot
- * CLI runs — use OpenClaw's canonical `agent:<id>:explicit:<session-id>`
- * shape. The Gateway marks authenticated operator calls as owner requests;
- * recognizing that canonical shape keeps the console direct while the
- * group/channel exclusions above remain structural. Non-canonical explicit
- * keys may still be admitted through the configured prefix allowlist.
- *
- * Known OpenClaw limitation: a tool context exposes `sessionKey`,
- * `messageChannel` and `oneShotCliRun`, but no first-class "this is a DM" flag.
- * Anything that does not positively match one of the direct shapes is refused
- * rather than guessed at, so an unrecognized native channel context fails
- * closed.
- */
-export function isDirectOwnerSession(sessionKey, ctx, cfg) {
-  const key = typeof sessionKey === "string" ? sessionKey.trim() : "";
-  if (!key) return { ok: false, reason: "no session key on this turn" };
-  if (key.includes(":group:") || key.includes(":channel:")) {
-    return { ok: false, reason: "group and channel sessions may not write vault facts" };
-  }
-  if (/^agent:[^:]+:explicit:[^:]+$/.test(key)) {
-    return { ok: true, reason: "canonical explicit operator session" };
-  }
-  if (ctx?.oneShotCliRun === true) return { ok: true, reason: "one-shot cli run" };
-  const prefixes = cfg?.directSessionPrefixes ?? [];
-  if (prefixes.some((prefix) => key.startsWith(prefix))) {
-    return { ok: true, reason: "explicit operator session" };
-  }
-  if (/^agent:[^:]+:main(?::|$)/.test(key)) return { ok: true, reason: "direct main session" };
-  if (/:direct:[^:]+$/.test(key)) return { ok: true, reason: "direct peer session" };
-  return { ok: false, reason: "session is not a recognized direct owner conversation" };
-}
-
-/**
- * OpenClaw reserves `senderIsOwner` for an allowlisted channel sender or a
- * Gateway client with operator.admin. the console deliberately connects
- * with narrower operator read/write scopes, so its authenticated loopback
- * calls arrive as `senderIsOwner: false`. Runtime-owned explicit sessions,
- * configured operator prefixes, and one-shot CLI runs remain trusted direct
- * control-plane contexts.
- */
-export function isFactOperatorAuthorized(ctx, direct) {
-  if (ctx?.senderIsOwner === true) return true;
-  // The authenticated OpenClaw Control UI runs through the built-in `webchat`
-  // transport. It deliberately uses the canonical per-agent `:main` session
-  // rather than an `:explicit:` session, and its operator token normally has
-  // read/write scope rather than operator.admin. The session shape is already
-  // structurally direct (group/channel keys were rejected above), while
-  // `messageProvider` is runtime-owned metadata rather than model input.
-  // Treat this one narrow combination as the operator's direct console; do not
-  // extend the exception to native channels or arbitrary `:main` sessions.
-  if (direct?.ok === true && direct.reason === "direct main session" && ctx?.messageProvider === "webchat") {
-    return true;
-  }
-  return direct?.ok === true && [
-    "canonical explicit operator session",
-    "explicit operator session",
-    "one-shot cli run",
-  ].includes(direct.reason);
 }
 
 /** Structural validation of the model's proposal, before anything is consulted. */
@@ -291,29 +229,30 @@ export function createFactTool({ cfg, store, ctx, deps = {}, logger }) {
     description: FACT_TOOL_DESCRIPTION,
     parameters: FACT_TOOL_PARAMETERS,
     async execute(toolCallId, params, signal) {
-      // 1. exposure — re-checked here, not just at factory time.
-      if (!cfg.factsAgents.includes(ctx?.agentId)) {
-        return failure("agent-not-allowed", "this agent may not write vault facts");
-      }
-      const direct = isDirectOwnerSession(ctx?.sessionKey, ctx, cfg);
-      if (!direct.ok) {
-        return failure("not-direct-session", direct.reason);
-      }
-      if (!isFactOperatorAuthorized(ctx, direct)) {
-        return failure("not-owner", "only an owner-authenticated direct turn may write vault facts");
-      }
+      // Boundary 2 of three — invocation. The same requirements exposure
+      // applied, re-derived from this tool's own execute context, which is a
+      // different object than the factory saw. Permission is not inherited
+      // from the earlier verdict; a session that changed shape in between is
+      // refused here.
+      const invocation = mayInvokeFactTools(cfg, ctx);
+      if (!invocation.ok) return failure(invocation.code, invocation.reason);
 
-      // 2. binding — resolve the exact run this tool call belongs to. The
-      // binding is stamped by before_tool_call, which is the only hook that
-      // sees both the tool call id and the run id.
+      // Binding — resolve the exact run this tool call belongs to. The binding
+      // is stamped by before_tool_call, which is the only hook that sees both
+      // the tool call id and the run id.
+      // Asked before resolving, because `resolveToolCall` consumes the binding
+      // and answers null for both "never bound" and "bound to a turn that is
+      // gone" — a wiring fault and a timing fault, which must not share a code.
+      const wasBound = store.hasToolCallBinding(toolCallId);
       const key = store.resolveToolCall(toolCallId);
-      if (!key) {
-        return failure("unbound-call", "this tool call is not bound to a classified turn");
-      }
-      const entry = store.get(key);
-      if (!entry) {
-        return failure("no-turn-state", "no turn state for this run");
-      }
+      const entry = key ? store.get(key) : null;
+
+      // Boundary 3 of three — mutation. Everything invocation required, and a
+      // turn to attribute the write to. See
+      // docs/decisions/ADR-0002-fact-authorization-boundaries.md.
+      const mutation = mayMutateFacts(cfg, ctx, { boundKey: wasBound, boundTurn: entry });
+      if (!mutation.ok) return failure(mutation.code, mutation.reason);
+      const direct = mutation.direct;
 
       // 3. budget — one evidence-backed transaction and one audit per run.
       // Deterministic precheck failures do not consume this slot: Flash may

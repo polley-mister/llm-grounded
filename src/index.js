@@ -28,6 +28,7 @@ import {
   describeFeatures,
 } from "./classify.js";
 import { appliesToAgent, configSchema, factsApplyToAgent, parseConfig } from "./config.js";
+import { mayExposeFactTools } from "./authorization.js";
 import {
   CORRECTION_RULE,
   FACT_RULE,
@@ -412,9 +413,9 @@ export function createPlugin(deps = {}) {
       // hypotheticals, hedges, jokes and third-party claims, so nothing weaker
       // than a real correction reaches the grounding classifier this way.
       const fact = isNewTurn ? detectFactStatement(userTurn, prevAssistant) : null;
-      const direct = isDirectOwnerSession(ctx?.sessionKey, ctx, cfg);
-      const factTransactionAllowed =
-        factsApplyToAgent(cfg, ctx?.agentId) && isFactOperatorAuthorized(ctx, direct) && direct.ok;
+      // Whether this turn could transact at all, which is the exposure
+      // question asked of the hook context rather than the factory's.
+      const factTransactionAllowed = mayExposeFactTools(cfg, ctx).ok;
       const verdict = isNewTurn
         ? classifyGrounding(userTurn, {
             prevAssistant,
@@ -1516,17 +1517,12 @@ export function createPlugin(deps = {}) {
       api.registerTool?.(
         (toolCtx) => {
           const cfg = resolveToolConfig(toolCtx, lastCfg);
-          const agentAllowed = factsApplyToAgent(cfg, toolCtx?.agentId);
-          const direct = isDirectOwnerSession(toolCtx?.sessionKey, toolCtx, cfg);
-          if (!agentAllowed) return null;
-          if (!isFactOperatorAuthorized(toolCtx, direct)) return null;
-          // Owner authentication is not enough on its own: it stays true when
-          // the operator speaks in a group or a channel. `execute` re-checks this,
-          // but exposure has to be direct-only as well — a tool the model can
-          // see in a shared conversation is a tool it will try to use there,
-          // and the refusal would arrive as a visible failure rather than the
-          // tool simply not existing.
-          if (!direct.ok) return null;
+          // Boundary 1 of three. Returning null keeps the tool out of the
+          // model's list entirely, which is a different and better outcome than
+          // offering it and refusing: a tool the model can see in a shared
+          // conversation is a tool it will try to use there. See
+          // docs/decisions/ADR-0002-fact-authorization-boundaries.md.
+          if (!mayExposeFactTools(cfg, toolCtx).ok) return null;
           const s = ensureStore(cfg);
           return createFactTool({
             cfg,
