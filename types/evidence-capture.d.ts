@@ -68,16 +68,11 @@ export function createTurnBudget(bounds?: Readonly<{
         chars: number;
     };
 };
-/**
- * Write one record atomically.
- *
- * Temporary file, then rename: a crash mid-write leaves either the previous
- * state or the new one, never a truncated record whose hash describes nothing.
- *
- * Never throws. Capture is best-effort by design — an unwritable store must not
- * be able to fail a user's turn.
- */
-export function writeEvidenceRecord(dir: any, record: any, logger: any): Promise<{
+export function writeEvidenceRecord(dir: any, record: any, logger: any, fsOps?: Readonly<{
+    mkdir: any;
+    writeFile: any;
+    rename: any;
+}>): Promise<{
     ok: boolean;
     path: any;
     reason?: undefined;
@@ -108,7 +103,7 @@ export function pruneEvidenceCapture(dir: any, retentionDays: number, logger: an
  * captured nothing because the budget was spent" are different facts about a
  * turn.
  */
-export function captureToolCallEvidence({ dir, budget, logger, tool, result, runtimeTools, bounds, ...rest }: {
+export function captureToolCallEvidence({ dir, budget, logger, tool, result, runtimeTools, bounds, fsOps, ...rest }: {
     [x: string]: any;
     dir: any;
     budget: any;
@@ -122,6 +117,7 @@ export function captureToolCallEvidence({ dir, budget, logger, tool, result, run
         itemsPerTurn: 8;
         charsPerTurn: 10000;
     }>;
+    fsOps: any;
 }): Promise<{
     evidenceIds: any[];
     captured: number;
@@ -129,11 +125,12 @@ export function captureToolCallEvidence({ dir, budget, logger, tool, result, run
     failed: number;
     reasons: any[];
 }>;
-export function captureEvidence({ dir, budget, logger, ...input }: {
+export function captureEvidence({ dir, budget, logger, fsOps, ...input }: {
     [x: string]: any;
     dir: any;
     budget: any;
     logger: any;
+    fsOps: any;
 }): Promise<{
     captured: boolean;
     reason: any;

@@ -15,6 +15,12 @@ import "./_vocabulary.mjs";
 
 const dir = () => mkdtemp(path.join(tmpdir(), "ev-hooks-"));
 
+// See tests/evidence-capture.test.mjs: a mode-based unwritable directory is not
+// unwritable for root.
+const AS_ROOT = process.getuid?.() === 0;
+const SKIP_AS_ROOT = AS_ROOT ? "root bypasses directory permissions" : false;
+
+
 function config(over = {}) {
   return {
     evidenceCaptureEnabled: true,
@@ -31,7 +37,7 @@ function contexts(over = {}) {
   };
 }
 
-function plugin(cfg) {
+function plugin(cfg, deps = {}) {
   const turns = [];
   const p = createPlugin({
     now: () => 1000,
@@ -39,6 +45,7 @@ function plugin(cfg) {
     pruneEvidence: async () => 0,
     writeTurn: async (_d, r) => { turns.push(r); return null; },
     pruneTurns: async () => 0,
+    ...deps,
   });
   p.__turns = turns;
   p.__ctx = (o = {}) => ({ ...contexts(o), pluginConfig: cfg });
@@ -233,7 +240,7 @@ test("human traffic is captured; heartbeat is not", async () => {
 // 8 — storage failure
 // ---------------------------------------------------------------------------
 
-test("an unwritable store does not alter the result or fail the turn", async () => {
+test("an unwritable store does not alter the result or fail the turn", { skip: SKIP_AS_ROOT }, async () => {
   const d = await dir();
   await chmod(d, 0o500);
   const cfg = config({ evidenceCaptureDir: path.join(d, "nested") });
@@ -248,6 +255,40 @@ test("an unwritable store does not alter the result or fail the turn", async () 
   assert.deepEqual(SEARCH, before);
 
   await chmod(d, 0o700);
+  await rm(d, { recursive: true, force: true });
+});
+
+test("a storage failure never disturbs the turn", async () => {
+  // The same invariant at the level where it matters: capture is an observer,
+  // and a bookkeeping problem must not reach the operator. Injected, so it
+  // holds regardless of who runs the suite.
+  const d = await dir();
+  const cfg = config({ evidenceCaptureDir: d });
+  const p = plugin(cfg, {
+    evidenceCaptureFs: {
+      mkdir: async () => undefined,
+      writeFile: async () => {
+        const error = new Error("permission denied");
+        error.code = "EACCES";
+        throw error;
+      },
+      rename: async () => undefined,
+    },
+  });
+  const mw = middleware(p, cfg);
+  const ctx = await startTurn(p, p.__ctx());
+
+  const before = structuredClone(SEARCH);
+  const out = await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, ctx);
+
+  assert.equal(out, undefined, "the tool result is untouched");
+  assert.deepEqual(SEARCH, before);
+  assert.deepEqual(await files(d), [], "nothing was stored");
+
+  const entry = p.__store.get({ runId: "run-1" });
+  assert.equal(entry.evidenceCaptureAttempted, true, "the attempt is on the record");
+  assert.equal(entry.evidenceCapturedCount, 0);
+  assert.equal(entry.evidenceCaptureFailedCount, 2, "one failure per evidence item");
   await rm(d, { recursive: true, force: true });
 });
 

@@ -23,6 +23,15 @@ import {
 
 const dir = () => mkdtemp(path.join(tmpdir(), "evidence-"));
 
+// `chmod 0500` does not make a directory unwritable for root, so the
+// permission-based tests below assert nothing when the suite runs as root. They
+// are kept — they are the only end-to-end check of the real syscalls — and
+// skipped rather than left to pass vacuously. The invariant itself is covered
+// unconditionally by the injected-failure tests.
+const AS_ROOT = process.getuid?.() === 0;
+const SKIP_AS_ROOT = AS_ROOT ? "root bypasses directory permissions" : false;
+
+
 const input = (over = {}) => ({
   turnId: "turn-1",
   toolCallId: "call-1",
@@ -211,7 +220,7 @@ test("a record is written atomically with restrictive permissions", async () => 
   await rm(d, { recursive: true, force: true });
 });
 
-test("an unwritable store never throws", async () => {
+test("an unwritable store never throws", { skip: SKIP_AS_ROOT }, async () => {
   // Capture is best-effort. A logging subsystem that can break delivery is the
   // wrong trade for a shadow feature.
   const d = await dir();
@@ -221,6 +230,45 @@ test("an unwritable store never throws", async () => {
   assert.equal(out.ok, false);
   await chmod(d, 0o700);
   await rm(d, { recursive: true, force: true });
+});
+
+test("a storage failure is reported, not thrown", async () => {
+  // The invariant is error handling, not Unix permission semantics, so the
+  // error is injected rather than provoked. This runs everywhere, including as
+  // root, and including on a filesystem that ignores mode bits.
+  const fsOps = {
+    mkdir: async () => undefined,
+    writeFile: async () => {
+      const error = new Error("permission denied");
+      error.code = "EACCES";
+      throw error;
+    },
+    rename: async () => { throw new Error("rename must not be reached after a failed write"); },
+  };
+  const warned = [];
+  const { record } = buildEvidenceRecord(input());
+  const out = await writeEvidenceRecord("/nonexistent/store", record, { warn: (m) => warned.push(String(m)) }, fsOps);
+
+  assert.equal(out.ok, false);
+  assert.match(out.reason, /permission denied/);
+  assert.equal(warned.length, 1, "a failed write is announced once");
+  assert.match(warned[0], /evidence capture failed/);
+});
+
+test("a storage failure surfaces as write_failed, and captures nothing", async () => {
+  const fsOps = {
+    mkdir: async () => undefined,
+    writeFile: async () => {
+      const error = new Error("permission denied");
+      error.code = "EACCES";
+      throw error;
+    },
+    rename: async () => undefined,
+  };
+  const out = await captureEvidence({ dir: "/nonexistent/store", budget: createTurnBudget(), fsOps, ...input() });
+  assert.equal(out.captured, false);
+  assert.equal(out.reason, "write_failed");
+  assert.equal(out.evidenceId, null);
 });
 
 test("capture reports references and outcome, never excerpt text", async () => {

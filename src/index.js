@@ -1088,6 +1088,8 @@ export function createPlugin(deps = {}) {
 
       const capture = captureToolCallEvidence({
         dir: cfg.evidenceCaptureDir,
+        // Injectable only so a test can make the store fail for real.
+        fsOps: deps.evidenceCaptureFs,
         budget: evidenceBudgets.get(budgetKey),
         logger: pluginLogger,
         tool,

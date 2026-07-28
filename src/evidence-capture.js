@@ -251,13 +251,25 @@ export function createTurnBudget(bounds = BOUNDS) {
  * Never throws. Capture is best-effort by design — an unwritable store must not
  * be able to fail a user's turn.
  */
-export async function writeEvidenceRecord(dir, record, logger) {
+/**
+ * The filesystem calls, injectable.
+ *
+ * Not for flexibility — there is one real implementation and there will only
+ * ever be one. It is so the failure path can be tested by causing a failure.
+ * The test that covered this made the directory unwritable with `chmod 0500`,
+ * which does nothing when the test process is root: the write succeeded and the
+ * assertion passed for the wrong reason, on the one branch whose entire purpose
+ * is to swallow an error without disturbing the turn.
+ */
+const REAL_FS = Object.freeze({ mkdir, writeFile, rename });
+
+export async function writeEvidenceRecord(dir, record, logger, fsOps = REAL_FS) {
   try {
-    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await fsOps.mkdir(dir, { recursive: true, mode: 0o700 });
     const target = path.join(dir, `${record.evidenceId}.json`);
     const temp = `${target}.tmp`;
-    await writeFile(temp, `${JSON.stringify(record)}\n`, { mode: 0o600 });
-    await rename(temp, target);
+    await fsOps.writeFile(temp, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+    await fsOps.rename(temp, target);
     return { ok: true, path: target };
   } catch (err) {
     logger?.warn?.(`llmGrounded: evidence capture failed: ${String(err?.message ?? err)}`);
@@ -315,6 +327,7 @@ export async function captureToolCallEvidence({
   result,
   runtimeTools = [],
   bounds = BOUNDS,
+  fsOps,
   ...rest
 }) {
   const items = extractEvidenceItems(tool, result, {
@@ -332,7 +345,7 @@ export async function captureToolCallEvidence({
   let failed = 0;
 
   for (const evidenceItem of items) {
-    const out = await captureEvidence({ dir, budget, logger, tool, result, evidenceItem, ...rest });
+    const out = await captureEvidence({ dir, budget, logger, tool, result, evidenceItem, fsOps, ...rest });
     if (out.captured) {
       evidenceIds.push(out.evidenceId);
       captured += 1;
@@ -345,7 +358,7 @@ export async function captureToolCallEvidence({
   return { evidenceIds, captured, skipped, failed, reasons };
 }
 
-export async function captureEvidence({ dir, budget, logger, ...input }) {
+export async function captureEvidence({ dir, budget, logger, fsOps, ...input }) {
   const built = buildEvidenceRecord(input);
   if (built.captureStatus !== "captured") {
     return { captured: false, reason: built.reason, evidenceId: null };
@@ -354,7 +367,7 @@ export async function captureEvidence({ dir, budget, logger, ...input }) {
   if (!admitted.ok) {
     return { captured: false, reason: admitted.reason, evidenceId: null };
   }
-  const written = await writeEvidenceRecord(dir, built.record, logger);
+  const written = await writeEvidenceRecord(dir, built.record, logger, fsOps);
   if (!written.ok) {
     return { captured: false, reason: "write_failed", evidenceId: null };
   }
