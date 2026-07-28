@@ -192,6 +192,9 @@ export {
   // Human, heartbeat, scheduled automation, system or test. Resolved from host
   // metadata only; turn content is never consulted.
   resolveTrafficClass,
+  // A verdict is resolved or it is nothing. Check this rather than reading
+  // `trafficClass` and trusting whatever comes back.
+  isResolvedTraffic,
   isTrafficClass,
   TRAFFIC_CLASSES,
 } from "./traffic.js";

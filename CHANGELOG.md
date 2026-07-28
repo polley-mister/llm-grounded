@@ -3,6 +3,75 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.2.5
+
+Repair: one traffic classification per turn.
+
+Evidence capture has been configured, enabled and inert in production since
+0.2.0. `resolveTrafficClass` was called from two seams with two different
+inputs. `agent_end` saw full host identity and recorded `human` or
+`synthetic_test`; OpenClaw's agent-tool-result middleware receives no session
+and no agent id, so it fell to `trafficClasses.default` — `system` on this
+installation — which is not an allowlisted capture class. Live telemetry shows
+both answers on the same turns:
+
+```
+trafficClass=human          evidenceCaptureSkipReason=traffic_class_excluded:system
+trafficClass=synthetic_test evidenceCaptureSkipReason=traffic_class_excluded:system
+```
+
+Affected builds:
+
+```
+0.2.0-0.2.4: evidence capture configured but inactive in production because
+middleware traffic classification lacked host identity and resolved to an
+excluded class.
+```
+
+Existing telemetry is not rewritten. Those skip reasons are the evidence of the
+failure.
+
+### Changed
+
+- **Breaking (`resolveTrafficClass`).** The return shape is now
+  `{status, trafficClass, reason, signals}`, where `trafficClass` is `null`
+  unless `status` is `"resolved"`. Previously three unrelated situations all
+  returned `system`: a configured default, an absent one (`default:unset`) and
+  an invalid one (`default:invalid(...)`). Only the first is a decision. A turn
+  carrying no identity at all is now `unresolved` / `identity_unavailable`
+  before any rule is consulted, so a written `default: "system"` cannot serve
+  as an answer for a turn nobody could identify. An explicit rule naming
+  `system` still resolves to `system`; only the fallback use was removed.
+  `isResolvedTraffic` is exported for callers that want the check rather than
+  the field.
+- Traffic identity is resolved once, at `before_prompt_build` — the only hook
+  the host gives full identity — and stored frozen on the turn, together with
+  the identity it was read from. Evidence capture and terminal telemetry read
+  that stored decision. No downstream hook classifies.
+- Telemetry records `trafficResolutionStatus`, `trafficClassSource` and
+  `trafficClassResolvedAt`. `trafficReason` is replaced by
+  `trafficClassSource`; `trafficClass` is `null` rather than `"system"` when
+  nothing was resolved.
+
+### Added
+
+- `trafficIdentityMismatch` on the turn record: set when a later hook presents
+  host identity that contradicts the stored one. Diagnostic only — the first
+  decision remains binding for the turn, and nothing reclassifies.
+- `evidenceCaptureStatus` reports `unavailable`, not `not_applicable`, when a
+  turn's identity was never resolved. Being unable to capture is not declining
+  to.
+- `tests/traffic-authority.test.mjs`. A source-level test: the resolver may be
+  invoked from exactly one place, and no other module in `src/` may import it.
+  The defect was not a wrong answer — both answers were correct for what each
+  caller could see — it was a second caller, and no behavioural test fails on
+  that until the two happen to disagree.
+- `tests/traffic-identity.test.mjs`. The lifecycle as the host actually runs
+  it: identity-rich initialization followed by identity-poor middleware. The
+  existing hook tests handed the middleware a full context, which is a sequence
+  that never occurs in production, and is why this stayed green for four
+  releases. Those tests now open the turn first.
+
 ## 0.2.4
 
 ### Fixed

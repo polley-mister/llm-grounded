@@ -13,7 +13,7 @@ export { normalizeForMatch, tokenize, valuesEquivalent, statesValue, looksSecret
 export { createGroundingStore, isReleasable, queryIsUnrelated, excerptFromToolResult } from "./state.js";
 export { parseConfig, appliesToAgent, factsApplyToAgent, DEFAULTS, CONFIG_JSON_SCHEMA } from "./config.js";
 export { stateHome, varDir } from "./paths.js";
-export { resolveTrafficClass, isTrafficClass, TRAFFIC_CLASSES } from "./traffic.js";
+export { resolveTrafficClass, isResolvedTraffic, isTrafficClass, TRAFFIC_CLASSES } from "./traffic.js";
 export { buildTurnRecord, writeTurn, pruneTurns, behaviorIdentity, resetFingerprint } from "./telemetry.js";
 export { captureEvidence, buildEvidenceRecord, createTurnBudget, writeEvidenceRecord, pruneEvidenceCapture, extractText, redactExcerpt, boundExcerpt, EVIDENCE_TOOLS, EVIDENCE_SCHEMA_VERSION, BOUNDS as EVIDENCE_BOUNDS } from "./evidence-capture.js";
 export { buildEvidence, writeEvidence, pruneEvidence, evidenceFileName, EVIDENCE_VERSION } from "./evidence.js";

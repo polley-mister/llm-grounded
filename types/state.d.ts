@@ -25,7 +25,7 @@ export function createGroundingStore(opts?: {
     now?: () => number;
 }): {
     /** Start (or restart) tracking for one turn. */
-    begin({ runId, sessionKey, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed }: {
+    begin({ runId, sessionKey, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed, traffic }: {
         runId: any;
         sessionKey: any;
         kind: any;
@@ -37,6 +37,7 @@ export function createGroundingStore(opts?: {
         prevAssistant: any;
         fact: any;
         factTransactionAllowed: any;
+        traffic: any;
     }): GroundingEntry;
     /** Count one voice revision for this turn. */
     noteVoiceRevision({ runId, sessionKey }: {
@@ -155,6 +156,16 @@ export function createGroundingStore(opts?: {
     }, reason: any): GroundingEntry;
     /** Note that the fact overlay actually rewrote a retrieval. */
     noteOverlayApplied({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }): GroundingEntry;
+    /**
+     * Note that the host later presented a different identity for this turn.
+     *
+     * Does not touch `traffic`. The recorded class remains what it was — the
+     * point of storing it is that it stops moving.
+     */
+    noteTrafficIdentityMismatch({ runId, sessionKey }: {
         runId: any;
         sessionKey: any;
     }): GroundingEntry;
@@ -296,6 +307,11 @@ export type GroundingEntry = {
     factRevisions: number;
     factOutcome: object | null;
     factFailClosed: boolean;
+    traffic: (import("./traffic.js").TrafficVerdict & {
+        resolvedAt: string;
+        identity: object;
+    }) | null;
+    trafficIdentityMismatch: boolean;
     createdAt: number;
     updatedAt: number;
 };

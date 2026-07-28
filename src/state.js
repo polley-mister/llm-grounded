@@ -89,6 +89,8 @@ const DEFAULT_MAX_ENTRIES = 200;
  * @property {number} factRevisions
  * @property {object|null} factOutcome
  * @property {boolean} factFailClosed
+ * @property {import("./traffic.js").TrafficVerdict & {resolvedAt: string, identity: object}|null} traffic
+ * @property {boolean} trafficIdentityMismatch
  * @property {number} createdAt
  * @property {number} updatedAt
  */
@@ -171,7 +173,7 @@ export function createGroundingStore(opts = {}) {
 
   return {
     /** Start (or restart) tracking for one turn. */
-    begin({ runId, sessionKey, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed }) {
+    begin({ runId, sessionKey, kind, correction, correctionScope, reason, turnNonce, userMessage, prevAssistant, fact, factTransactionAllowed, traffic }) {
       const key = runId ? runKey(runId) : sessionKey ? sessionSlot(sessionKey) : null;
       if (!key) return null;
       const ts = now();
@@ -209,6 +211,15 @@ export function createGroundingStore(opts = {}) {
         // Scope of a correction, needed by resolveOutcomes to tell an
         // ambiguous correction (ask) from a user-owned one (accept and write).
         correctionScope: correctionScope ?? null,
+        // Who or what produced this turn, together with the host identity that
+        // answer was read from. Decided once at before_prompt_build, which is
+        // the only hook that sees full identity, and stored frozen so the
+        // tool-result middleware and terminal telemetry read one answer instead
+        // of each deriving their own from whatever their seam happens to carry.
+        traffic: traffic ?? null,
+        // Set when a later hook presents host identity that contradicts the
+        // recorded one. Diagnostic only: the first decision stays binding.
+        trafficIdentityMismatch: false,
         // The validated proposal, captured before the commit is attempted so a
         // truthful reply can be rebuilt from it if the draft goes wrong.
         factProposal: null,
@@ -460,6 +471,20 @@ export function createGroundingStore(opts = {}) {
       const entry = this.get({ runId, sessionKey });
       if (!entry) return null;
       entry.overlayApplied = true;
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /**
+     * Note that the host later presented a different identity for this turn.
+     *
+     * Does not touch `traffic`. The recorded class remains what it was — the
+     * point of storing it is that it stops moving.
+     */
+    noteTrafficIdentityMismatch({ runId, sessionKey }) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry) return null;
+      entry.trafficIdentityMismatch = true;
       entry.updatedAt = now();
       return entry;
     },

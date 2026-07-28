@@ -3,7 +3,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveTrafficClass, isTrafficClass, TRAFFIC_CLASSES } from "../src/traffic.js";
+import {
+  resolveTrafficClass,
+  isResolvedTraffic,
+  isTrafficClass,
+  TRAFFIC_CLASSES,
+} from "../src/traffic.js";
 
 /** The rules this installation actually needs, from the observed corpus. */
 const RULES = {
@@ -64,24 +69,41 @@ test("the session key is consulted as well as the session id", () => {
 });
 
 test("an unknown agent falls to the configured default", () => {
+  // A written default is the operator's answer for a turn that carries identity
+  // and matches no rule. That is a decision, so it resolves.
   const r = resolveTrafficClass({ sessionId: "abc", agentId: "market-research" }, RULES);
+  assert.equal(r.status, "resolved");
   assert.equal(r.trafficClass, "system");
   assert.equal(r.reason, "default");
 });
 
-test("no rules at all still produces a valid class", () => {
+test("a turn with no identity at all is unresolved, never the default", () => {
+  // The whole defect in one case. The tool-result middleware sees no session
+  // and no agent; with a configured `default: "system"` the old code answered
+  // "system", which is a real class, so every consumer downstream believed the
+  // turn had been identified. Missing metadata now has its own answer.
+  const r = resolveTrafficClass({}, RULES);
+  assert.equal(r.status, "unresolved");
+  assert.equal(r.trafficClass, null);
+  assert.equal(r.reason, "identity_unavailable");
+});
+
+test("no rules at all is a configuration fault, not a class", () => {
   const r = resolveTrafficClass({ sessionId: "x", agentId: "y" });
-  assert.equal(r.trafficClass, "system");
-  assert.equal(r.reason, "default:unset");
+  assert.equal(r.status, "unresolved");
+  assert.equal(r.trafficClass, null);
+  assert.equal(r.reason, "configuration_unresolved:unset");
 });
 
 test("a misconfigured class never becomes a new category", () => {
-  // Label drift is what makes a corpus unqueryable. An invalid value falls back
-  // and says so, rather than silently splitting a bucket.
+  // Label drift is what makes a corpus unqueryable. An invalid value is refused
+  // rather than admitted under a fallback name, and the offending value stays
+  // in the reason so the misconfiguration is visible in the data.
   const r = resolveTrafficClass({ agentId: "main" }, { byAgent: { main: "Human Traffic" } });
-  assert.equal(r.trafficClass, "system");
+  assert.equal(r.status, "unresolved");
+  assert.equal(r.trafficClass, null);
   assert.match(r.reason, /invalid\(Human Traffic\)/);
-  assert.ok(isTrafficClass(r.trafficClass));
+  assert.ok(!isTrafficClass(r.trafficClass));
 });
 
 test("the raw signals travel with the verdict", () => {
@@ -101,12 +123,35 @@ test("turn content is never consulted", () => {
   assert.deepEqual(a, b);
 });
 
-test("every emitted class is in the enum", () => {
+test("every emitted class is in the enum, and only resolved verdicts emit one", () => {
   const cases = [
     { sessionId: "mc-chat-1" }, { agentId: "main" }, { sessionId: "smoke-1" },
     { sessionId: "ops-triage-x" }, {}, { agentId: "nope" },
   ];
   for (const c of cases) {
-    assert.ok(TRAFFIC_CLASSES.includes(resolveTrafficClass(c, RULES).trafficClass), JSON.stringify(c));
+    const r = resolveTrafficClass(c, RULES);
+    const label = JSON.stringify(c);
+    if (r.status === "resolved") {
+      assert.ok(TRAFFIC_CLASSES.includes(r.trafficClass), label);
+    } else {
+      // No class at all, so nothing can read one off an unresolved turn by
+      // accident. That is the property, not merely "the value is in the enum".
+      assert.equal(r.trafficClass, null, label);
+    }
   }
+});
+
+test("the signals travel with an unresolved verdict too", () => {
+  // An unresolved turn is still re-scorable once the rules change; it is not
+  // stranded the way the first corpus was.
+  const r = resolveTrafficClass({ sessionId: "x", agentId: "y" });
+  assert.deepEqual(r.signals, { sessionId: "x", sessionKey: null, agentId: "y" });
+});
+
+test("isResolvedTraffic accepts only a verdict naming a real class", () => {
+  assert.ok(isResolvedTraffic(resolveTrafficClass({ sessionId: "mc-chat-1" }, RULES)));
+  assert.ok(!isResolvedTraffic(resolveTrafficClass({}, RULES)));
+  assert.ok(!isResolvedTraffic(null));
+  // A hand-made object claiming to be resolved without a real class is refused.
+  assert.ok(!isResolvedTraffic({ status: "resolved", trafficClass: "Human Traffic" }));
 });

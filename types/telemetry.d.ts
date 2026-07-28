@@ -67,7 +67,10 @@ export function buildTurnRecord(entry: any, extra?: {}): {
     blockedTools: any;
     toolBlocked: boolean;
     trafficClass: any;
-    trafficReason: any;
+    trafficResolutionStatus: any;
+    trafficClassSource: any;
+    trafficClassResolvedAt: any;
+    trafficIdentityMismatch: boolean;
     synthetic: boolean;
     syntheticReason: any;
     sessionId: any;

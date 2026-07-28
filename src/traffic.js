@@ -17,10 +17,28 @@
 //     property of heartbeats, and it would silently reclassify every turn the
 //     day that setting changed.
 //
+// And one rule about what an answer is. A verdict is either *resolved* — a rule
+// the operator wrote matched this turn's identity — or *unresolved*, and an
+// unresolved turn has no class at all. This function used to return `system`
+// for three different situations: a configured default, an absent default, and
+// a misconfigured one. Only the first is a decision. The other two were
+// "nothing is known" wearing a real class's name, and that is how evidence
+// capture came to be excluded on every production turn for four releases — the
+// tool-result middleware carries no session or agent identity, so it fell to
+// the default, and the default looked like an answer.
+//
 // The raw signals stay on the record alongside the verdict, so a turn can be
 // re-scored when the rules change instead of being stranded.
 
 /** @typedef {"human"|"heartbeat"|"scheduled_automation"|"system"|"synthetic_test"} TrafficClass */
+
+/**
+ * @typedef {object} TrafficVerdict
+ * @property {"resolved"|"unresolved"} status
+ * @property {TrafficClass|null} trafficClass the class, or null when unresolved
+ * @property {string} reason which rule matched, or why none could
+ * @property {{sessionId: string|null, sessionKey: string|null, agentId: string|null}} signals
+ */
 
 export const TRAFFIC_CLASSES = Object.freeze([
   "human",
@@ -47,6 +65,11 @@ export function isTrafficClass(value) {
   return TRAFFIC_CLASSES.includes(value);
 }
 
+/** True for a verdict that names a real class. */
+export function isResolvedTraffic(verdict) {
+  return verdict?.status === "resolved" && isTrafficClass(verdict.trafficClass);
+}
+
 /**
  * Resolve the traffic class for one turn.
  *
@@ -60,17 +83,27 @@ export function isTrafficClass(value) {
  * kinds of traffic: `main` answers both the scheduled heartbeat and a named
  * operations run, and only the session tells them apart.
  *
+ * Before any of that: a turn with no identity at all is unresolved. A written
+ * `default: "system"` is the operator's answer for turns that carry identity
+ * and match no rule. It is not an answer for turns that carry no identity, and
+ * letting it serve as one is what made missing host metadata indistinguishable
+ * from a configured decision.
+ *
  * @param {{sessionId?: string, sessionKey?: string, agentId?: string}} meta
  *   host metadata, never turn content
  * @param {{bySessionPrefix?: Record<string,string>, byAgent?: Record<string,string>,
  *          default?: string}} [rules]
- * @returns {{trafficClass: TrafficClass, reason: string, signals: object}}
+ * @returns {TrafficVerdict}
  */
 export function resolveTrafficClass(meta = {}, rules = {}) {
   const sessionId = str(meta.sessionId);
   const sessionKey = str(meta.sessionKey);
   const agentId = str(meta.agentId);
   const signals = { sessionId: sessionId || null, sessionKey: sessionKey || null, agentId: agentId || null };
+
+  if (!sessionId && !sessionKey && !agentId) {
+    return unresolved("identity_unavailable", signals);
+  }
 
   const configured = rules.bySessionPrefix ?? {};
   // Longest prefix first, so a specific rule beats a general one regardless of
@@ -98,18 +131,22 @@ export function resolveTrafficClass(meta = {}, rules = {}) {
 }
 
 /**
- * Never emit a class outside the enum.
+ * Never emit a class outside the enum, and never emit one nobody chose.
  *
- * A misconfigured value becoming a new category is the drift that makes a
- * corpus unqueryable: "Performance Assurance Intent" and "Performance Intent"
- * as two labels for one thing. An unrecognised value falls back to `system`
- * and says so in the reason, so the misconfiguration is visible in the data
- * rather than silently splitting a bucket.
+ * Label drift is what makes a corpus unqueryable: "Performance Assurance
+ * Intent" and "Performance Intent" as two labels for one thing. An
+ * unrecognised value is refused rather than admitted under a fallback name,
+ * and the offending value is kept in the reason, so the misconfiguration is
+ * visible in the data instead of silently splitting a bucket.
  */
 function finish(value, reason, signals) {
-  if (isTrafficClass(value)) return { trafficClass: value, reason, signals };
-  if (value == null || value === "") return { trafficClass: "system", reason: `${reason}:unset`, signals };
-  return { trafficClass: "system", reason: `${reason}:invalid(${String(value).slice(0, 40)})`, signals };
+  if (isTrafficClass(value)) return { status: "resolved", trafficClass: value, reason, signals };
+  if (value == null || value === "") return unresolved("configuration_unresolved:unset", signals);
+  return unresolved(`configuration_unresolved:invalid(${String(value).slice(0, 40)})`, signals);
+}
+
+function unresolved(reason, signals) {
+  return { status: "unresolved", trafficClass: null, reason, signals };
 }
 
 function startsWithAny(candidates, prefix) {

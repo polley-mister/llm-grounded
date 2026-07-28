@@ -337,6 +337,44 @@ export function createPlugin(deps = {}) {
     return store;
   }
 
+  /**
+   * The one place turn identity is read out of the host.
+   *
+   * Not because the precedence is subtle, but because it was written out
+   * longhand at each of the two sites that needed it and the two spellings
+   * disagreed. Whatever this returns is what the turn is; nothing downstream
+   * re-derives it.
+   */
+  function trafficIdentityOf(event, ctx) {
+    return Object.freeze({
+      sessionId:
+        event?.sessionId ?? ctx?.sessionId ?? ctx?.sessionKey ?? event?.sessionKey ?? null,
+      sessionKey:
+        ctx?.sessionKey ?? event?.sessionKey ?? ctx?.sessionId ?? event?.sessionId ?? null,
+      agentId: ctx?.agentId ?? event?.agentId ?? null,
+    });
+  }
+
+  /**
+   * Did the host later present a different identity for this turn?
+   *
+   * Compared field by field against what was recorded, and only where both
+   * sides actually have a value: a hook that carries less identity than
+   * `before_prompt_build` did is missing information, not contradicting it,
+   * and treating absence as disagreement would flag every ordinary turn.
+   *
+   * Reporting only. The first decision stays binding — re-deciding here is the
+   * defect this whole change removes.
+   */
+  function hasTrafficIdentityMismatch(stored, later) {
+    for (const field of ["sessionId", "sessionKey", "agentId"]) {
+      if (stored?.[field] != null && later?.[field] != null && stored[field] !== later[field]) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   const handlers = {
     async before_prompt_build(event, ctx) {
       const cfg = hookConfig(ctx);
@@ -395,6 +433,22 @@ export function createPlugin(deps = {}) {
         : { kind: existing?.kind ?? null, reason: existing?.hardReason ?? "carried" };
 
       if (isNewTurn) {
+        // Who or what produced this turn, decided here and nowhere else.
+        //
+        // This is the only hook that sees full host identity. OpenClaw's
+        // agent-tool-result middleware receives none, so the evidence path used
+        // to classify from what it had, land on the configured default, and
+        // exclude itself — on every production turn since 0.2.0, while
+        // telemetry recorded the correct class from this same turn. One turn,
+        // two answers. The decision and the identity it was made from are both
+        // frozen: a shallow freeze would still let a later hook edit the
+        // identity out from under the verdict.
+        const identity = trafficIdentityOf(event, ctx);
+        const traffic = Object.freeze({
+          ...resolveTrafficClass(identity, cfg.trafficClasses),
+          resolvedAt: "before_prompt_build",
+          identity,
+        });
         // Phase 0: record the signals this turn tripped, alongside the verdict.
         // Read-only — describeFeatures never influences the decision.
         telemetryFeatures.set(key.runId ?? key.sessionKey, {
@@ -420,6 +474,7 @@ export function createPlugin(deps = {}) {
           prevAssistant,
           fact,
           factTransactionAllowed,
+          traffic,
         });
       }
 
@@ -979,6 +1034,18 @@ export function createPlugin(deps = {}) {
         store?.noteEvidenceSkip?.(key, reason);
         log("debug", `llmGrounded: evidence capture skipped tool=${event?.toolName} reason=${reason}`);
       };
+      // Louder than a skip, because it is not one. An unresolved identity means
+      // capture is inert rather than declining, and the last time that happened
+      // it ran unnoticed across four releases while every diagnostic said the
+      // feature was configured. It never falls back to a class, and it never
+      // invents a turn to hang the reason on: with no entry there is nothing to
+      // annotate, and the warning is the whole record.
+      const skipUnresolved = () => {
+        store?.noteEvidenceSkip?.(key, "traffic_class_unresolved");
+        log("warn",
+          `llmGrounded: evidence capture unavailable tool=${event?.toolName} ` +
+            "reason=traffic_class_unresolved (no turn identity was resolved at before_prompt_build)");
+      };
 
       if (!cfg?.evidenceCaptureEnabled) return skip("capture_disabled");
 
@@ -993,17 +1060,11 @@ export function createPlugin(deps = {}) {
       if (isErrorResult(result)) return skip("tool_not_successful");
 
       const entry = store?.get?.(key) ?? null;
-      const traffic = resolveTrafficClass(
-        {
-          // The turn's own recorded identity is authoritative here: the
-          // middleware context carries none, so classifying from it alone put
-          // every captured turn in the default class.
-          sessionId: event?.sessionId ?? ctx?.sessionId ?? entry?.sessionKey ?? key.sessionKey,
-          sessionKey: ctx?.sessionKey ?? event?.sessionKey ?? key.sessionKey,
-          agentId: ctx?.agentId ?? entry?.agentId,
-        },
-        cfg.trafficClasses,
-      );
+      // Read the turn's decision. Never classify here: this seam has no
+      // identity to classify from, which is precisely how it managed to
+      // disagree with the rest of the turn for four releases.
+      const traffic = entry?.traffic ?? null;
+      if (traffic?.status !== "resolved") return skipUnresolved();
       // Heartbeats and scheduled runs are excluded initially: volume without
       // calibration value, since claim support is being characterised on human
       // answers.
@@ -1175,6 +1236,13 @@ export function createPlugin(deps = {}) {
   async function recordTurn(cfg, entry, event, ctx, terminal = {}) {
     if (!cfg?.telemetryDir) return;
     const k = telemetryKey(ctx, event);
+    // Compare, do not reclassify. If this hook sees a different session or
+    // agent than the turn was recorded under, that is worth knowing and worth
+    // recording; it is not grounds for the turn to change what it is.
+    if (entry?.traffic?.identity && hasTrafficIdentityMismatch(entry.traffic.identity, trafficIdentityOf(event, ctx))) {
+      store?.noteTrafficIdentityMismatch?.({ runId: entry.runId, sessionKey: entry.sessionKey });
+      entry = { ...entry, trafficIdentityMismatch: true };
+    }
     const meta = k ? telemetryFeatures.get(k) : null;
     const decorated = {
       ...entry,
@@ -1215,16 +1283,12 @@ export function createPlugin(deps = {}) {
       // Marking beats an external exclusion list: the flag travels with the
       // record, so a corpus copied elsewhere stays correctly labelled.
       ...synthetic(event, ctx),
-      // Resolved from host metadata (session and agent identity), never from
-      // the turn text.
-      traffic: resolveTrafficClass(
-        {
-          sessionId: event?.sessionId ?? ctx?.sessionId,
-          sessionKey: ctx?.sessionKey ?? event?.sessionKey,
-          agentId: ctx?.agentId,
-        },
-        cfg?.trafficClasses,
-      ),
+      // The decision this turn already made, copied — not remade. Resolved
+      // from host metadata at before_prompt_build, never from the turn text.
+      traffic: entry?.traffic ?? null,
+      // Whether the host has since presented a different identity for the same
+      // turn. A diagnostic, not a trigger: the recorded class stands.
+      trafficIdentityMismatch: entry?.trafficIdentityMismatch === true,
       turnId: k,
       sessionId: event?.sessionId ?? ctx?.sessionId ?? ctx?.sessionKey,
       agentId: ctx?.agentId,

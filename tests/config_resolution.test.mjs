@@ -84,8 +84,10 @@ test("REGRESSION: production-shaped registration captures evidence", async () =>
   const d = await dir();
   const log = recorder();
   const p = plugin(log);
-  const mw = registerProductionShaped(p, captureConfig(d), log);
+  const cfg = captureConfig(d);
+  const mw = registerProductionShaped(p, cfg, log);
 
+  await p.handlers.before_prompt_build({ prompt: "[user-message:a]\nwhat is the price\n[/user-message:a]", messages: [] }, { ...CTX, pluginConfig: cfg });
   const out = await mw({ toolName: "web_search", toolCallId: "c1", params: { query: "price" }, result: SEARCH }, CTX);
 
   assert.equal(out, undefined, "the tool result is not rewritten");
@@ -217,12 +219,15 @@ test("direct and production-shaped registration resolve equivalent configuration
     registerAgentToolResultMiddleware: (h) => { directMw = h; },
     config: { plugins: { entries: { "llm-grounded": { enabled: true, config: cfg } } } },
   });
+  await direct.handlers.before_prompt_build({ prompt: "[user-message:a]\nwhat is the price\n[/user-message:a]", messages: [] }, { ...CTX, pluginConfig: cfg });
   await directMw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, CTX);
   const viaDirect = (await files(d)).length;
 
   const d2 = await dir();
+  const cfg2 = captureConfig(d2);
   const prod = plugin(recorder());
-  const prodMw = registerProductionShaped(prod, captureConfig(d2));
+  const prodMw = registerProductionShaped(prod, cfg2);
+  await prod.handlers.before_prompt_build({ prompt: "[user-message:a]\nwhat is the price\n[/user-message:a]", messages: [] }, { ...CTX, pluginConfig: cfg2 });
   await prodMw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, CTX);
   const viaProd = (await files(d2)).length;
 
@@ -277,13 +282,22 @@ test("REGRESSION: the middleware receives no turn identity and still captures", 
 test("an unbound tool call still skips, and says why", async () => {
   // No binding and no context is genuinely unattributable. It must skip
   // visibly rather than capture under a guessed identity.
+  //
+  // It says so at warn, not debug. This is the shape of the failure that ran
+  // unnoticed from 0.2.0 to 0.2.4 — capture configured, enabled, and inert —
+  // and a debug line is not where that belongs.
   const d = await dir();
   const log = recorder();
   const p = plugin(log);
   const mw = registerProductionShaped(p, captureConfig(d), log);
   await mw({ toolName: "web_search", toolCallId: "never-bound", result: SEARCH }, {});
   assert.deepEqual(await files(d), []);
-  assert.match(log.lines.debug.join(" "), /reason=(no_turn_identity|traffic_class_excluded)/);
+
+  const warned = log.lines.warn.join(" ");
+  assert.match(warned, /reason=traffic_class_unresolved/);
+  // The point of the reason. An unattributable call is not attributed to
+  // anything, least of all to a real class that happens to be the default.
+  assert.doesNotMatch(warned, /system/);
   await rm(d, { recursive: true, force: true });
 });
 

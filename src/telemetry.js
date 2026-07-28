@@ -196,6 +196,9 @@ function evidenceCaptureStatus(entry) {
   // capture; it was unable to. Reporting that as not_applicable would make a
   // fault look like a legitimate choice, which is exactly what happened.
   if (entry?.runtimeConfigResolved === false) return "unavailable";
+  // Same distinction, one layer along: a turn whose identity was never resolved
+  // did not fall outside the capture policy, it never reached one.
+  if (entry?.evidenceCaptureSkipReason === "traffic_class_unresolved") return "unavailable";
   if (!entry?.evidenceCaptureAttempted) return "not_applicable";
   const captured = entry.evidenceCapturedCount ?? 0;
   const lost = (entry.evidenceCaptureSkippedCount ?? 0) + (entry.evidenceCaptureFailedCount ?? 0);
@@ -299,11 +302,25 @@ export function buildTurnRecord(entry, extra = {}) {
     blockedTools: extra.blockedTools ?? [],
     toolBlocked: Boolean((extra.blockedTools ?? []).length),
 
-    // Who produced this turn. Default analysis should filter to "human":
-    // the heartbeat runs every 30 minutes and would otherwise dominate every
-    // rate computed from this corpus.
-    trafficClass: extra.traffic?.trafficClass ?? "system",
-    trafficReason: extra.traffic?.reason ?? null,
+    // Who produced this turn, and whether that was actually established.
+    // Default analysis should filter to "human": the heartbeat runs every 30
+    // minutes and would otherwise dominate every rate computed from this
+    // corpus.
+    //
+    // No default is applied here. This field used to read "system" whenever the
+    // verdict was missing, which made an unidentified turn indistinguishable
+    // from a positively identified system one — and system turns are excluded
+    // from capture, so the substitution was silently load-bearing. A null class
+    // with an explicit status is the honest shape.
+    trafficClass: extra.traffic?.trafficClass ?? null,
+    trafficResolutionStatus: extra.traffic?.status ?? "unresolved",
+    // Which rule answered, or why none could: `builtin-prefix:smoke-`,
+    // `session-prefix:mc-chat`, `agent:tars-chat`, `identity_unavailable`.
+    trafficClassSource: extra.traffic?.reason ?? null,
+    trafficClassResolvedAt: extra.traffic?.resolvedAt ?? null,
+    // The host later presented a different identity for this turn. Recorded,
+    // never acted on: the first decision is the turn's.
+    trafficIdentityMismatch: Boolean(extra.trafficIdentityMismatch),
 
     synthetic: Boolean(extra.synthetic),
     syntheticReason: extra.synthetic ? extra.syntheticReason ?? "" : null,

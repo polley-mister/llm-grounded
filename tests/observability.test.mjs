@@ -86,7 +86,8 @@ test("the first middleware invocation is announced once", async () => {
 test("a successful capture is observable", async () => {
   const d = await dir();
   const log = recorder();
-  const { mw } = register(config(d), log);
+  const { p, mw } = register(config(d), log);
+  await p.handlers.before_prompt_build({ prompt: "[user-message:a]\nwhat is the price\n[/user-message:a]", messages: [] }, { ...CTX, pluginConfig: config(d) });
   await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, CTX);
   assert.match(log.lines.debug.join(" "), /evidence captured tool=web_search ids=1/);
   await rm(d, { recursive: true, force: true });
@@ -100,6 +101,9 @@ test("every skip names the gate that stopped it", async () => {
     ["tool_not_successful", config(d), "web_search", CTX],
     ["traffic_class_excluded", config(d), "web_search", { ...CTX, sessionKey: "x", sessionId: "x" }],
   ];
+  // Not in the table: traffic_class_unresolved. It has no turn to record itself
+  // on — that is the whole condition — so it is asserted on the warn channel in
+  // config_resolution.test.mjs instead.
   for (const [expected, cfg, tool, ctx] of cases) {
     const log = recorder();
     const { p, mw } = register(cfg, log);

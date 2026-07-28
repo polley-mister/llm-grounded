@@ -45,6 +45,21 @@ function plugin(cfg) {
   return p;
 }
 
+const TURN = { prompt: "[user-message:a]\nwhat is the price\n[/user-message:a]", messages: [] };
+
+/**
+ * Open the turn the way the host does.
+ *
+ * `before_prompt_build` is the only hook that sees session and agent identity,
+ * and it is where the turn's traffic class is decided. Driving the middleware
+ * without it tests a sequence that never occurs: in production the turn always
+ * exists first, and the middleware always arrives with nothing.
+ */
+async function startTurn(p, ctx) {
+  await p.handlers.before_prompt_build(TURN, ctx);
+  return ctx;
+}
+
 /** Register the plugin and return the tool-result middleware it installed. */
 function middleware(p, cfg) {
   let fn = null;
@@ -79,8 +94,10 @@ test("a successful search is captured and the result is returned unchanged", asy
   const p = plugin(cfg);
   const mw = middleware(p, cfg);
 
+  const ctx = await startTurn(p, p.__ctx());
+
   const before = structuredClone(SEARCH);
-  const out = await mw({ toolName: "web_search", toolCallId: "call-1", params: { query: "price" }, result: SEARCH }, p.__ctx());
+  const out = await mw({ toolName: "web_search", toolCallId: "call-1", params: { query: "price" }, result: SEARCH }, ctx);
 
   assert.equal(out, undefined, "capture must not rewrite a tool result");
   assert.deepEqual(SEARCH, before, "the result object is not mutated in place");
@@ -125,10 +142,15 @@ test("failed and unsupported tool calls write nothing", async () => {
   const p = plugin(cfg);
   const mw = middleware(p, cfg);
 
+  // Opened as a capturable turn, so what stops these is the tool gate rather
+  // than the turn being unidentified — otherwise the assertion would hold even
+  // with capture entirely broken.
+  const ctx = await startTurn(p, p.__ctx());
+
   // A truthy object is not proof of success.
-  await mw({ toolName: "web_search", toolCallId: "c1", result: { isError: true, content: [{ type: "text", text: "failed" }] } }, p.__ctx());
-  await mw({ toolName: "exec", toolCallId: "c2", result: { content: [{ type: "text", text: "secrets" }] } }, p.__ctx());
-  await mw({ toolName: "read", toolCallId: "c3", result: { content: [{ type: "text", text: "file body" }] } }, p.__ctx());
+  await mw({ toolName: "web_search", toolCallId: "c1", result: { isError: true, content: [{ type: "text", text: "failed" }] } }, ctx);
+  await mw({ toolName: "exec", toolCallId: "c2", result: { content: [{ type: "text", text: "secrets" }] } }, ctx);
+  await mw({ toolName: "read", toolCallId: "c3", result: { content: [{ type: "text", text: "file body" }] } }, ctx);
 
   assert.deepEqual(await files(d), []);
   await rm(d, { recursive: true, force: true });
@@ -144,12 +166,14 @@ test("credentials in results and parameters never reach disk", async () => {
   const p = plugin(cfg);
   const mw = middleware(p, cfg);
 
+  const ctx = await startTurn(p, p.__ctx());
+
   await mw({
     toolName: "web_search",
     toolCallId: "c1",
     params: { query: "price", apiKey: "sk-abcdefghijklmnopqrst", cookie: "session=zzz" },
     result: { results: [{ snippet: "Auth uses sk-abcdefghijklmnopqrst and the price is $4,000 as listed." }] },
-  }, p.__ctx());
+  }, ctx);
 
   const stored = await files(d);
   const body = await readFile(path.join(d, stored[0]), "utf8");
@@ -170,8 +194,10 @@ test("per-call and per-turn limits are enforced", async () => {
   const mw = middleware(p, cfg);
   const many = { results: Array.from({ length: 6 }, (_, i) => ({ snippet: `result number ${i} with text` })) };
 
-  await mw({ toolName: "web_search", toolCallId: "c1", result: many }, p.__ctx());
-  await mw({ toolName: "web_search", toolCallId: "c2", result: many }, p.__ctx());
+  const ctx = await startTurn(p, p.__ctx());
+
+  await mw({ toolName: "web_search", toolCallId: "c1", result: many }, ctx);
+  await mw({ toolName: "web_search", toolCallId: "c2", result: many }, ctx);
 
   const stored = await files(d);
   assert.equal(stored.length, 3, "per-call cap of 2, per-turn cap of 3");
@@ -188,14 +214,18 @@ test("human traffic is captured; heartbeat is not", async () => {
   const p = plugin(cfg);
   const mw = middleware(p, cfg);
 
-  await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, p.__ctx());
+  await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, await startTurn(p, p.__ctx()));
   const afterHuman = (await files(d)).length;
   assert.ok(afterHuman > 0, "human traffic captures");
 
   // agent main with a bare session id classifies as heartbeat.
-  await mw({ toolName: "web_search", toolCallId: "c2", result: SEARCH },
+  const beat = await startTurn(p,
     p.__ctx({ agentId: "main", sessionKey: "0f5212de-uuid", sessionId: "0f5212de-uuid", runId: "run-2" }));
+  await mw({ toolName: "web_search", toolCallId: "c2", result: SEARCH }, beat);
   assert.equal((await files(d)).length, afterHuman, "heartbeat adds nothing");
+  // Excluded as heartbeat, on its own merits — not because identity went
+  // missing and something answered "system" on its behalf.
+  assert.equal(p.__store.get({ runId: "run-2" })?.evidenceCaptureSkipReason, "traffic_class_excluded:heartbeat");
   await rm(d, { recursive: true, force: true });
 });
 
@@ -210,8 +240,10 @@ test("an unwritable store does not alter the result or fail the turn", async () 
   const p = plugin(cfg);
   const mw = middleware(p, cfg);
 
+  const ctx = await startTurn(p, p.__ctx());
+
   const before = structuredClone(SEARCH);
-  const out = await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, p.__ctx());
+  const out = await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, ctx);
   assert.equal(out, undefined);
   assert.deepEqual(SEARCH, before);
 
@@ -224,7 +256,7 @@ test("capture disabled writes nothing at all", async () => {
   const cfg = config({ evidenceCaptureDir: d, evidenceCaptureEnabled: false });
   const p = plugin(cfg);
   const mw = middleware(p, cfg);
-  await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, p.__ctx());
+  await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, await startTurn(p, p.__ctx()));
   assert.deepEqual(await files(d), []);
   await rm(d, { recursive: true, force: true });
 });
@@ -238,7 +270,7 @@ test("records are 0600 in a 0700 directory", async () => {
   const cfg = config({ evidenceCaptureDir: path.join(d, "store") });
   const p = plugin(cfg);
   const mw = middleware(p, cfg);
-  await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, p.__ctx());
+  await mw({ toolName: "web_search", toolCallId: "c1", result: SEARCH }, await startTurn(p, p.__ctx()));
 
   const store = path.join(d, "store");
   assert.equal((await stat(store)).mode & 0o777, 0o700);
@@ -257,8 +289,10 @@ test("identical queries produce distinct evidence ids", async () => {
   const mw = middleware(p, cfg);
   const one = { results: [{ snippet: "Listed at $4,000 today." }] };
 
-  await mw({ toolName: "web_search", toolCallId: "c1", params: { query: "price" }, result: one }, p.__ctx());
-  await mw({ toolName: "web_search", toolCallId: "c2", params: { query: "price" }, result: one }, p.__ctx());
+  const ctx = await startTurn(p, p.__ctx());
+
+  await mw({ toolName: "web_search", toolCallId: "c1", params: { query: "price" }, result: one }, ctx);
+  await mw({ toolName: "web_search", toolCallId: "c2", params: { query: "price" }, result: one }, ctx);
 
   const stored = await files(d);
   assert.equal(stored.length, 2);
