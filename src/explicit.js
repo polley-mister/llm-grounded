@@ -1,4 +1,5 @@
 import { resolveCorrection } from "./corrections.js";
+import { stripVocative } from "./classify.js";
 
 // ---------------------------------------------------------------------------
 // Hard triggers: the only inputs that may compel a capability.
@@ -100,16 +101,49 @@ function matchesAny(patterns, text) {
 }
 
 /**
+ * The result of a hard-trigger decision.
+ *
+ * `kind` names what the operator asked for outright. "web" and "memory" are
+ * the only retrieval tiers; "arithmetic", "admin" and "correction" bind a
+ * scope rather than an obligation to retrieve, so a caller routing on
+ * retrieval must test for the two tiers rather than for a non-null kind.
+ *
+ * The fields below `reason` are populated only for a correction, which is why
+ * they are optional. They were previously absent from the published type
+ * entirely, so a typed caller could not read the result it actually receives.
+ *
+ * @typedef {object} HardTrigger
+ * @property {"web"|"memory"|"arithmetic"|"admin"|"correction"|null} kind
+ * @property {string} reason
+ * @property {"fact_commit"} [policyScope] what the correction is allowed to touch
+ * @property {string} [correctionScope]
+ * @property {string} [evidenceSource] the operator's own assertion, for a correction
+ * @property {string|null} [requiredTool] always null: a correction compels no retrieval
+ * @property {boolean} [factEnforcementRequired]
+ * @property {boolean} [commitPermitted]
+ */
+
+/**
  * The only decision that may compel a tool.
  *
  * @param {string} message raw user text for this turn
  * @param {{prevAssistant?: string}} [context] the previous assistant turn, used
  *   only to resolve whether this turn is a correction of it
- * @returns {{kind: "web"|"memory"|"arithmetic"|"admin"|null, reason: string}}
+ * @returns {HardTrigger}
  */
 export function hardTrigger(message, context = {}) {
-  const text = String(message ?? "").trim();
-  if (!text) return { kind: null, reason: "" };
+  const raw = String(message ?? "").trim();
+  if (!raw) return { kind: null, reason: "" };
+
+  // Address the agent by name and the turn is unchanged in substance, so match
+  // against the text with the vocative removed. Without this, "Hey TARS, what
+  // is 1 + 1?" resolves to no trigger while "what is 1 + 1?" resolves to
+  // arithmetic - the one path that may compel anything, disabled by a
+  // greeting. stripVocative lives in classify.js but is pure normalisation and
+  // carries no verdict, so it does not weaken the demote-only invariant: this
+  // file still owns every decision that binds.
+  const stripped = stripVocative(raw).trim();
+  const text = stripped || raw;
 
   if (matchesAny(ADMIN_COMMANDS, text)) return { kind: "admin", reason: "explicit-admin" };
 

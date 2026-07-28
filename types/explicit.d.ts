@@ -17,19 +17,38 @@ export function normalizeArithmetic(text: any): string;
  */
 export function isCompleteArithmetic(text: any): boolean;
 /**
+ * The result of a hard-trigger decision.
+ *
+ * `kind` names what the operator asked for outright. "web" and "memory" are
+ * the only retrieval tiers; "arithmetic", "admin" and "correction" bind a
+ * scope rather than an obligation to retrieve, so a caller routing on
+ * retrieval must test for the two tiers rather than for a non-null kind.
+ *
+ * The fields below `reason` are populated only for a correction, which is why
+ * they are optional. They were previously absent from the published type
+ * entirely, so a typed caller could not read the result it actually receives.
+ *
+ * @typedef {object} HardTrigger
+ * @property {"web"|"memory"|"arithmetic"|"admin"|"correction"|null} kind
+ * @property {string} reason
+ * @property {"fact_commit"} [policyScope] what the correction is allowed to touch
+ * @property {string} [correctionScope]
+ * @property {string} [evidenceSource] the operator's own assertion, for a correction
+ * @property {string|null} [requiredTool] always null: a correction compels no retrieval
+ * @property {boolean} [factEnforcementRequired]
+ * @property {boolean} [commitPermitted]
+ */
+/**
  * The only decision that may compel a tool.
  *
  * @param {string} message raw user text for this turn
  * @param {{prevAssistant?: string}} [context] the previous assistant turn, used
  *   only to resolve whether this turn is a correction of it
- * @returns {{kind: "web"|"memory"|"arithmetic"|"admin"|null, reason: string}}
+ * @returns {HardTrigger}
  */
 export function hardTrigger(message: string, context?: {
     prevAssistant?: string;
-}): {
-    kind: "web" | "memory" | "arithmetic" | "admin" | null;
-    reason: string;
-};
+}): HardTrigger;
 /**
  * Non-binding hint derived from the legacy verdict.
  *
@@ -37,3 +56,34 @@ export function hardTrigger(message: string, context?: {
  * compel a tool, reject a response, consume a revision, or fail closed.
  */
 export function advisoryText(legacyKind: any): "" | "This may depend on current external information. Use web search if you need it." | "This may depend on something the operator told you before. Check memory if you need it.";
+/**
+ * The result of a hard-trigger decision.
+ *
+ * `kind` names what the operator asked for outright. "web" and "memory" are
+ * the only retrieval tiers; "arithmetic", "admin" and "correction" bind a
+ * scope rather than an obligation to retrieve, so a caller routing on
+ * retrieval must test for the two tiers rather than for a non-null kind.
+ *
+ * The fields below `reason` are populated only for a correction, which is why
+ * they are optional. They were previously absent from the published type
+ * entirely, so a typed caller could not read the result it actually receives.
+ */
+export type HardTrigger = {
+    kind: "web" | "memory" | "arithmetic" | "admin" | "correction" | null;
+    reason: string;
+    /**
+     * what the correction is allowed to touch
+     */
+    policyScope?: "fact_commit";
+    correctionScope?: string;
+    /**
+     * the operator's own assertion, for a correction
+     */
+    evidenceSource?: string;
+    /**
+     * always null: a correction compels no retrieval
+     */
+    requiredTool?: string | null;
+    factEnforcementRequired?: boolean;
+    commitPermitted?: boolean;
+};

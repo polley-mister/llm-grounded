@@ -3,6 +3,27 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.2.4
+
+### Fixed
+
+- `hardTrigger` matched against raw text, so a vocative prefix disabled every
+  hard trigger: `"Hey Atlas, what is 1 + 1?"` resolved to no trigger while
+  `"what is 1 + 1?"` resolved to arithmetic. Addressing the agent by name is
+  the most natural way to open a turn, and it silently switched off the only
+  path in the package that may compel a tool. The vocative is now stripped
+  before matching. A hyphenated identifier (`atlas-chat is broken`) is still
+  not treated as a vocative.
+- The published type for `hardTrigger` omitted the `"correction"` kind and
+  every field the correction branch returns, so a typed caller could not read
+  the result it actually receives.
+
+### Added
+
+- `tests/explicit.test.mjs`. `hardTrigger` had no test coverage at all, which
+  is how the vocative regression reached a release: it had a named test under
+  the classifier it replaced, and that test did not move with the behaviour.
+
 ## 0.2.1
 
 Repair: runtime configuration resolution.
