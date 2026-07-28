@@ -3,7 +3,7 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
-## 0.3.3
+## 0.3.4
 
 Repair. The 0.3.2 deployment gate rejected its own first deployment.
 
