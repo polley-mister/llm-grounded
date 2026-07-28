@@ -52,7 +52,7 @@ test("every corpus file is tracked by git", () => {
 
 test("the v2 corpus has the committed shape", () => {
   assert.equal(all.length, 117, "turns");
-  assert.equal(all.reduce((n, r) => n + r.goldClaims.length, 0), 103, "gold claims");
+  assert.equal(all.reduce((n, r) => n + r.goldClaims.length, 0), 101, "gold claims");
   assert.equal(new Set(all.map((r) => r.groupId)).size, 50, "groups");
   assert.equal(new Set(all.map((r) => r.scenarioFamily)).size, 18, "families");
 });
@@ -93,6 +93,30 @@ test("gold labels are on-schema", () => {
       }
       assert.ok(c.surfaceText && c.proposition, `${r.id}: v2 fields required`);
     }
+    // Premises are facts the answer requires but never states. They carry no
+    // span by definition — that is the whole reason they are not claims — so a
+    // premise with a surfaceText would mean the correction had been undone.
+    for (const premise of r.goldPremises ?? []) {
+      assert.ok(CLAIM_TYPES.includes(premise.sourceType), `${r.id}: ${premise.sourceType}`);
+      assert.ok(premise.proposition, `${r.id}: a premise needs a proposition`);
+      assert.equal(premise.surfaceText, undefined, `${r.id}: a premise must not claim a span`);
+      for (const e of premise.requiredEvidence) {
+        assert.ok(EVIDENCE_KINDS.includes(e), `${r.id}: ${e}`);
+      }
+    }
+  }
+});
+
+test("implicit-premise cases are labelled as one claim plus premises", () => {
+  // The case that failed in five of five runs. Gold demanded three
+  // draft-anchored claims for a sentence that states only the comparison, which
+  // is not expressible: there is no span to anchor the premises to.
+  const implicit = all.filter((r) => (r.goldPremises ?? []).length > 0);
+  assert.ok(implicit.length >= 3, "expected the corrected composite cases");
+  for (const r of implicit) {
+    assert.equal(r.goldClaims.length, 1, `${r.id}: the draft asserts one thing`);
+    assert.ok(r.goldClaims[0].dependsOnPremises?.length >= 2, `${r.id}: premises must be referenced`);
+    assert.ok(r.goldRationale, `${r.id}: the correction needs a recorded reason`);
   }
 });
 

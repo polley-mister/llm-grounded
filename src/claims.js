@@ -61,6 +61,16 @@ export const ABSTENTION_REASONS = Object.freeze([
   "low_confidence",
   "oversized",
   "empty_draft",
+  // The model returned nothing. Distinct from malformed output because the
+  // remedy differs: empty content usually means the generation budget was
+  // spent before any answer was written.
+  "empty_output",
+  // The generation hit its ceiling mid-answer. Collapsing this into
+  // malformed_output sent an earlier investigation looking for a prompt fault
+  // when the fault was a 1500-token limit on a reasoning model.
+  "output_truncated",
+  // The provider failed: HTTP error, transport failure, unparseable envelope.
+  "provider_error",
   // A claim that bundles several independently checkable propositions cannot
   // be mapped to distinct evidence, which is the entire purpose of extraction.
   // Abstaining makes that failure measurable; repairing it would hide the one
@@ -230,6 +240,9 @@ export function validateClaim(raw, { draft, spans }) {
   const dependsOn = Array.isArray(raw.dependsOn) ? raw.dependsOn : [];
   if (dependsOn.some((d) => typeof d !== "string" || !d)) return null;
 
+  const dependsOnPremises = Array.isArray(raw.dependsOnPremises) ? raw.dependsOnPremises : [];
+  if (dependsOnPremises.some((d) => typeof d !== "string" || !d)) return null;
+
   const confidence = Number(raw.confidence);
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return null;
 
@@ -258,6 +271,7 @@ export function validateClaim(raw, { draft, spans }) {
     // to surfaceText.
     text,
     dependsOn,
+    dependsOnPremises,
     sourceStart: start,
     sourceEnd: end,
     sentenceIndex: sentenceIndex >= 0 ? sentenceIndex : null,
@@ -276,6 +290,42 @@ export function validateClaim(raw, { draft, spans }) {
     // Whether the model actually used the v2 contract, as opposed to legacy
     // output that happened to validate.
     v2Shape,
+  };
+}
+
+/**
+ * Validate one implied evidence premise.
+ *
+ * A premise is a fact the answer *depends on* without stating it. "You are $500
+ * short at today's price" asserts a comparison; the budget and the price are
+ * required for it to hold, and neither has a span in the draft.
+ *
+ * Requiring every premise to be draft-anchored made that decomposition
+ * impossible — the case failed in five of five runs — and the only ways out
+ * were to invent spans or to accept a bundled claim. Both are worse than
+ * naming the premise as what it is.
+ */
+export function validatePremise(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const proposition = typeof raw.proposition === "string" ? raw.proposition.trim() : "";
+  if (!proposition || proposition.length > MAX_CLAIM_CHARS) return null;
+  if (!CLAIM_TYPES.includes(raw.sourceType)) return null;
+
+  const required = Array.isArray(raw.requiredEvidence) ? raw.requiredEvidence : [];
+  for (const kind of required) {
+    if (typeof kind !== "string") return null;
+    if (kind.startsWith("claim:")) continue;
+    if (!EVIDENCE_KINDS.includes(kind)) return null;
+  }
+
+  return {
+    id: typeof raw.id === "string" && raw.id ? raw.id.slice(0, 16) : null,
+    proposition,
+    sourceType: raw.sourceType,
+    requiredEvidence: required.length ? [...required] : ["none"],
+    // Always false for now: a premise that *is* stated in the draft should be
+    // an ordinary claim with a span, not a premise.
+    explicitInDraft: false,
   };
 }
 
@@ -300,13 +350,21 @@ const INDEPENDENT_SOURCES = ["web", "memory", "system"];
  *
  * @returns {string|null} a reason, or null when the set is acceptable
  */
-export function checkAtomicity(claims) {
+export function checkAtomicity(claims, premises = []) {
+  const premiseIds = new Set(premises.map((p) => p.id).filter(Boolean));
   const factualTypes = new Set(["stored_personal", "current_external", "system_or_runtime_state"]);
   const hasFactualPeers = claims.some((c) => factualTypes.has(c.claimType));
 
   for (const claim of claims) {
     const kinds = claim.requiredEvidence.filter((k) => INDEPENDENT_SOURCES.includes(k));
-    const references = claim.requiredEvidence.some((k) => k.startsWith("claim:")) || claim.dependsOn.length > 0;
+    // A claim may declare its dependencies as sibling claims or as implied
+    // premises. Either names what the evidence stage has to establish, which is
+    // the property this check exists to protect.
+    const declaredPremises = (claim.dependsOnPremises ?? []).filter((id) => premiseIds.has(id));
+    const references =
+      claim.requiredEvidence.some((k) => k.startsWith("claim:")) ||
+      claim.dependsOn.length > 0 ||
+      declaredPremises.length > 0;
 
     // Two independent sources in one claim, with nothing saying it is derived
     // from other claims: this is a compound sentence wearing one label.
@@ -345,6 +403,15 @@ export function parseExtraction(text, { draft, spans }) {
   if (!rawClaims) return { ok: false, reason: "malformed_output" };
   if (rawClaims.length > MAX_CLAIMS) return { ok: false, reason: "oversized" };
 
+  const rawPremises = Array.isArray(parsed.premises) ? parsed.premises : [];
+  if (rawPremises.length > MAX_CLAIMS) return { ok: false, reason: "oversized" };
+  const premises = [];
+  for (const raw of rawPremises) {
+    const premise = validatePremise(raw);
+    if (!premise) return { ok: false, reason: "malformed_output" };
+    premises.push({ ...premise, id: premise.id ?? `p${premises.length + 1}` });
+  }
+
   const claims = [];
   for (const raw of rawClaims) {
     const claim = validateClaim(raw, { draft, spans });
@@ -354,10 +421,10 @@ export function parseExtraction(text, { draft, spans }) {
     claims.push({ ...claim, id: claim.id ?? `c${claims.length + 1}` });
   }
 
-  const atomicity = checkAtomicity(claims);
+  const atomicity = checkAtomicity(claims, premises);
   if (atomicity) return { ok: false, reason: atomicity };
 
-  return { ok: true, claims };
+  return { ok: true, claims, premises };
 }
 
 // ---------------------------------------------------------------------------
@@ -407,8 +474,23 @@ const SYSTEM = [
   "    c3 proposition \"$3,500 is less than $4,000.\"          calculated",
   "       dependsOn [c1,c2]   requiredEvidence [calculation,claim:c1,claim:c2]",
   "",
-  "A derived conclusion MUST declare dependsOn. A single claim must never require two of",
-  "web, memory and system unless it declares dependsOn.",
+  "A derived conclusion MUST declare its dependencies. A single claim must never require",
+  "two of web, memory and system unless it declares them.",
+  "",
+  "When a premise is REQUIRED by the answer but never stated in the draft, put it in a",
+  "separate top-level premises array and reference it with dependsOnPremises. Do not",
+  "invent a surfaceText span for something the draft does not say.",
+  "",
+  "  turn  \"Is my budget enough?\"   draft \"You are 00 short at today\u2019s price.\"",
+  "    claims:   c1 surfaceText \"You are 00 short at today\u2019s price.\"",
+  "                 proposition \"The operator\u2019s budget is 00 less than the current price.\"",
+  "                 claimType calculated   dependsOnPremises [p1,p2]",
+  "    premises: p1 proposition \"The operator has a stated budget.\"",
+  "                 sourceType stored_personal   requiredEvidence [memory]",
+  "              p2 proposition \"The product has a current price.\"",
+  "                 sourceType current_external  requiredEvidence [web]",
+  "",
+  "Include exact values in a premise when the turn or context supplies them.",
   "surfaceText spans may overlap when several atomic claims come from one sentence.",
   "",
   "== NOT CLAIMS ==",
@@ -437,6 +519,7 @@ const SYSTEM = [
   "  verificationTarget whether it should be checked against evidence",
   `  requiredEvidence  array from: ${EVIDENCE_KINDS.join(", ")}; or \"claim:<id>\" to inherit`,
   "  dependsOn         array of claim ids this one is derived from",
+  "  dependsOnPremises array of premise ids this one requires",
   "  confidence        0..1",
   "",
   "== CLAIM TYPE IS ABOUT WHERE THE TRUTH COMES FROM ==",
@@ -519,7 +602,7 @@ export async function extractClaims(input = {}, opts = {}) {
     });
   } catch (err) {
     const aborted = /abort/i.test(String(err?.name ?? err?.message ?? ""));
-    return abstain(aborted ? "timeout" : "malformed_output", err?.message ?? err);
+    return abstain(aborted ? "timeout" : "provider_error", err?.message ?? err);
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -535,21 +618,36 @@ export async function extractClaims(input = {}, opts = {}) {
     // silent truncation".
     usage: result?.usage ?? null,
     latencyMs: result?.latencyMs ?? null,
+    finishReason: result?.finishReason ?? null,
+    requestId: result?.requestId ?? null,
+    contentLength: result?.contentLength ?? null,
   };
 
-  const parsed = parseExtraction(result?.text, { draft, spans });
-  if (!parsed.ok) return abstain(parsed.reason);
+  // Termination state first. Empty content and a truncated generation are not
+  // malformed JSON, and treating them as such hides the actual cause: on a
+  // reasoning model the budget is spent thinking before anything is written.
+  const finish = result?.finishReason ?? null;
+  const text = String(result?.text ?? "");
+  if (!text.trim()) {
+    return { ...abstain(finish === "length" ? "output_truncated" : "empty_output"), provenance };
+  }
+  if (finish === "length") {
+    return { ...abstain("output_truncated"), provenance };
+  }
+
+  const parsed = parseExtraction(text, { draft, spans });
+  if (!parsed.ok) return { ...abstain(parsed.reason), provenance };
 
   const floor = Number.isFinite(opts.minConfidence) ? opts.minConfidence : 0;
   if (floor > 0 && parsed.claims.some((c) => c.confidence < floor)) {
     // The whole extraction abstains rather than silently dropping the claims
     // below the floor: dropping them would look like the model said the draft
     // was clean.
-    return abstain("low_confidence");
+    return { ...abstain("low_confidence"), provenance };
   }
 
   if (parsed.claims.length === 0) return noClaims(provenance);
-  return { status: "extracted", provenance, claims: parsed.claims };
+  return { status: "extracted", provenance, claims: parsed.claims, premises: parsed.premises ?? [] };
 }
 
 /** Material claims that should be checked. The ladder's input. */

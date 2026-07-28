@@ -46,6 +46,7 @@ export declare function validateClaim(raw: any, { draft, spans }: {
     proposition: any;
     text: any;
     dependsOn: any;
+    dependsOnPremises: any;
     sourceStart: any;
     sourceEnd: any;
     sentenceIndex: any;
@@ -59,6 +60,25 @@ export declare function validateClaim(raw: any, { draft, spans }: {
     v2Shape: boolean;
 } | null;
 /**
+ * Validate one implied evidence premise.
+ *
+ * A premise is a fact the answer *depends on* without stating it. "You are $500
+ * short at today's price" asserts a comparison; the budget and the price are
+ * required for it to hold, and neither has a span in the draft.
+ *
+ * Requiring every premise to be draft-anchored made that decomposition
+ * impossible — the case failed in five of five runs — and the only ways out
+ * were to invent spans or to accept a bundled claim. Both are worse than
+ * naming the premise as what it is.
+ */
+export declare function validatePremise(raw: any): {
+    id: any;
+    proposition: any;
+    sourceType: any;
+    requiredEvidence: any[];
+    explicitInDraft: boolean;
+} | null;
+/**
  * Reject a claim set that is not atomic.
  *
  * Only the cases decidable *mechanically* are checked. A third rule was
@@ -70,7 +90,7 @@ export declare function validateClaim(raw: any, { draft, spans }: {
  *
  * @returns {string|null} a reason, or null when the set is acceptable
  */
-export declare function checkAtomicity(claims: any): string | null;
+export declare function checkAtomicity(claims: any, premises?: any[]): string | null;
 /**
  * Parse and validate a whole extraction payload.
  *
@@ -84,6 +104,7 @@ export declare function parseExtraction(text: any, { draft, spans }: {
     ok: boolean;
     reason: string;
     claims?: undefined;
+    premises?: undefined;
 } | {
     reason?: undefined;
     ok: boolean;
@@ -92,6 +113,7 @@ export declare function parseExtraction(text: any, { draft, spans }: {
         proposition: any;
         text: any;
         dependsOn: any;
+        dependsOnPremises: any;
         sourceStart: any;
         sourceEnd: any;
         sentenceIndex: any;
@@ -103,6 +125,13 @@ export declare function parseExtraction(text: any, { draft, spans }: {
         requiredEvidence: any[];
         confidence: number;
         v2Shape: boolean;
+        id: any;
+    }[];
+    premises: {
+        proposition: any;
+        sourceType: any;
+        requiredEvidence: any[];
+        explicitInDraft: boolean;
         id: any;
     }[];
 };
@@ -150,12 +179,16 @@ export declare function extractClaims(input?: {
         promptVersion: string;
         usage: any;
         latencyMs: any;
+        finishReason: any;
+        requestId: any;
+        contentLength: any;
     };
     claims: {
         surfaceText: any;
         proposition: any;
         text: any;
         dependsOn: any;
+        dependsOnPremises: any;
         sourceStart: any;
         sourceEnd: any;
         sentenceIndex: any;
@@ -169,6 +202,13 @@ export declare function extractClaims(input?: {
         v2Shape: boolean;
         id: any;
     }[] | undefined;
+    premises: {
+        proposition: any;
+        sourceType: any;
+        requiredEvidence: any[];
+        explicitInDraft: boolean;
+        id: any;
+    }[];
 }>;
 /** Material claims that should be checked. The ladder's input. */
 export declare function verificationTargets(extraction: any): any;

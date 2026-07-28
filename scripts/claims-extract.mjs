@@ -412,6 +412,8 @@ async function main() {
       provenance: extraction.provenance ?? null,
       latencyMs: extraction.provenance?.latencyMs ?? null,
       usage: extraction.provenance?.usage ?? null,
+      finishReason: extraction.provenance?.finishReason ?? null,
+      contentLength: extraction.provenance?.contentLength ?? null,
       predictedClaims: extraction.claims ?? [],
       // Present and empty on a labelled zero-claim turn; null when unlabelled,
       // so a turn with no predictions still has a row to label.
