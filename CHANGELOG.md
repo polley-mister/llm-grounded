@@ -3,6 +3,41 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.2.0
+
+Evidence capture, shadow only.
+
+### Added
+
+- **Claim extraction** (`src/claims.js`), offline. Reads what a draft asserts
+  rather than predicting it from the turn. Discriminated result: `extracted`,
+  `no_claims`, or `abstained` with a reason — a model that timed out or was
+  never configured must be visible as a failure, not as a clean turn.
+- **Evidence capture** (`src/evidence-capture.js`, `src/evidence-adapters.js`).
+  Bounded, redacted excerpts of what a tool returned, stored apart from
+  telemetry, captured after trusted overlays so it reflects what the model
+  actually read. Per-tool allowlisted adapters; an unknown tool is never
+  captured generically.
+- **Traffic classification** (`src/traffic.js`) from host metadata, never from
+  turn content.
+- Offline harnesses: `claims:extract`, `claims:stability`.
+
+### Changed
+
+- Terminal delivery observation now distinguishes *a lane saw this text* from
+  *the plugin changed it*, and reports which lane.
+- The fail-closed sentence is no longer treated as a control signal on turns
+  that owed no evidence.
+
+### Notes
+
+Nothing in this release has authority. Claim extraction is offline; evidence
+capture observes tool results without altering them, the answer, or the turn.
+`claimSupported` is written null and stays null: there is no entailment stage.
+
+Model selection for extraction is recorded in
+[docs/decisions/ADR-0001](docs/decisions/ADR-0001-claim-extractor-model.md).
+
 ## 0.1.0
 
 First public release.

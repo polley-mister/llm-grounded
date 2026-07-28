@@ -37,7 +37,16 @@ jobs:
       # Declarations are committed so a git clone works with no build step.
       # This fails if they have drifted from the source JSDoc, which is the
       # failure mode that pattern actually has.
-      - run: npm run check:types
+      #
+      # Run twice deliberately. The check once passed on the first invocation
+      # and failed on the second, because it did not clean its temporary output
+      # directory and tsc emitted against stale state. A check that only works
+      # the first time is not a check, and running it once would not catch the
+      # same bug returning.
+      - name: Check generated types twice
+        run: |
+          npm run check:types
+          npm run check:types
 
   example:
     runs-on: ubuntu-latest
