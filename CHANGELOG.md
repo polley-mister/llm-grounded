@@ -3,6 +3,71 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.3.0
+
+Claim extraction runs in production, in shadow. This is the first release that
+adds a model call to the turn lifecycle, which is why it is a minor bump rather
+than a patch, even though the extraction has no authority over anything.
+
+Off by default. `claimExtractionEnabled: false` — this is the only feature in
+the package that costs money per turn, and an operator should switch that on
+deliberately rather than discover it in a bill.
+
+See `docs/decisions/ADR-0003-shadow-claim-extraction.md`.
+
+### Added
+
+- Shadow extraction from `agent_end`, after every delivery lane has run.
+  `before_agent_finalize` also has the draft and is the wrong place: it sits
+  between the operator and their reply, so a model call there adds its latency
+  to every eligible turn and a hang there is a hang the operator experiences. By
+  `agent_end` the answer has been sent, so the call cannot revise it, delay it,
+  or fail it. That ordering is the whole safety argument.
+- It never retrieves: the request carries `tools: []`, `memory: false`,
+  `workspaceContext: false`, `persona: false`, stated in the request rather than
+  assumed from context and asserted by test. It never revises, refuses or
+  blocks — its result is recorded and otherwise ignored. It never fails a turn:
+  every path returns a record and the top level swallows, because a turn that
+  has already been delivered must not be broken by its own bookkeeping.
+- It never labels support. `claimSupported` is null and `supportLabels` empty in
+  every record, and the store has no setter for either.
+- Its own directory, its own shorter retention, 0600 in a 0700 directory.
+  Extraction records hold verbatim answer text and the propositions read out of
+  it, which is the same category of content as an evidence excerpt. Telemetry
+  keeps the status, counts, abstention reason and latency — enough to compute
+  every planned measurement without holding a single claim.
+- `claimExtractionTrafficClasses`, defaulting to `["human", "synthetic_test"]`.
+  A heartbeat every thirty minutes would dominate both the spend and the corpus.
+  A turn whose traffic class was never resolved is skipped, not extracted.
+- `claimExtractionAgentId` names a configured agent and sends no `model` field,
+  as the CASE audit does, so the operator's model choice stays in configuration
+  and ADR-0001's conclusion can be revisited without a release.
+- Turn record fields: `claimExtractionId`, `claimExtractionStatus`,
+  `claimExtractionSkipReason`, `claimExtractionAbstentionReason`,
+  `claimExtractionLatencyMs`, `claimCount`, `materialClaimCount`.
+- `src/inspection.js` and `scripts/inspect-turns.mjs`: the offline join of a
+  turn record to the excerpts it cites. Resolves strictly by recorded
+  `evidenceId` in recorded order, verifies each excerpt still hashes to what was
+  written, and keeps the failure modes apart — `missing` for a recorded id with
+  no file, `expired` where the turn is older than retention and pruning is the
+  explanation, `unreadable`, `corrupt`. It never retrieves, never calls a model
+  and never labels support.
+- `docs/decisions/ADR-0002-fact-authorization-boundaries.md` and
+  `src/authorization.js`. The three guards on the vault write are named apart —
+  `mayExposeFactTools`, `mayInvokeFactTools`, `mayMutateFacts` — with the
+  invariant that a later boundary may be stricter but never more permissive,
+  made structural by each requiring the previous one.
+
+### Fixed
+
+- `internalTurnId` was not unique across processes: the counter restarted with
+  the gateway, so `t1` named two unrelated turns from two different days in the
+  first corpus that joined on it. It now carries a per-process prefix, and the
+  counter is module-scoped so two indexes in one process cannot collide either.
+- `no-turn-state` was unreachable. `resolveToolCall` returns null both for a
+  call that was never bound and for one whose turn has expired, so both reported
+  `unbound-call` — a timing fault diagnosed as a wiring fault.
+
 ## 0.2.7
 
 Telemetry semantics for evidence capture. No change to what is captured, only

@@ -87,6 +87,27 @@ export const DEFAULTS = Object.freeze({
   evidenceCaptureMaxItemsPerTurn: 8,
   evidenceCaptureMaxCharsPerItem: 2000,
   evidenceCaptureMaxCharsPerTurn: 10000,
+
+  // Claim extraction in production shadow mode. Off by default, and off is the
+  // honest default: this is the only feature in the package that adds a model
+  // call to a turn, and an operator should switch that on deliberately rather
+  // than discover it in a bill.
+  //
+  // Its own directory again. Extraction records hold verbatim answer text and
+  // the claims read out of it, which is the same category of content as an
+  // evidence excerpt and gets the same separation and the same shorter
+  // retention.
+  claimExtractionEnabled: false,
+  claimExtractionDir: path.join(varDir(), "claim-extraction"),
+  claimExtractionRetentionDays: 14,
+  // Human and test traffic only. Extraction costs a model call per turn, and a
+  // 30-minute heartbeat would dominate both the spend and the corpus.
+  claimExtractionTrafficClasses: ["human", "synthetic_test"],
+  // Which configured agent runs the extraction, so the operator's model choice
+  // for it is the one that runs. Empty means the runtime's default agent.
+  claimExtractionAgentId: "",
+  claimExtractionTimeoutMs: 20000,
+  claimExtractionMaxTokens: 16000,
   // Prompt surfaces to hash into each telemetry record's `promptHash`. A
   // wording change here alters behaviour without touching code, so a corpus
   // that cannot see it will eventually be used to justify a wrong conclusion.
@@ -310,6 +331,46 @@ export const CONFIG_JSON_SCHEMA = Object.freeze({
           "minimum": 100,
           "maximum": 20000
     },
+    claimExtractionEnabled: {
+      type: "boolean",
+      description:
+        "Extract claims from delivered answers, for measurement only. Shadow: never revises, retrieves, refuses or blocks. Adds one model call per eligible turn.",
+    },
+    claimExtractionDir: {
+      type: "string",
+      minLength: 1,
+      description:
+        "Directory for extraction records. Must differ from evidenceCaptureDir and telemetryDir: these hold verbatim answer text.",
+    },
+    claimExtractionRetentionDays: {
+      type: "integer",
+      minimum: 1,
+      maximum: 365,
+      description: "Days of extraction records retained.",
+    },
+    claimExtractionTrafficClasses: {
+      type: "array",
+      items: { enum: [...TRAFFIC_CLASSES] },
+      description:
+        "Traffic classes eligible for extraction. Heartbeat and scheduled automation are excluded by default: a model call apiece, on traffic the calibration is not about.",
+    },
+    claimExtractionAgentId: {
+      type: "string",
+      description:
+        "Agent id whose configured model runs extraction. Requires llm.allowAgentIdOverride. Empty uses the runtime default.",
+    },
+    claimExtractionTimeoutMs: {
+      type: "integer",
+      minimum: 1000,
+      maximum: 120000,
+      description: "Budget for one extraction. On timeout the turn records an abstention and nothing else changes.",
+    },
+    claimExtractionMaxTokens: {
+      type: "integer",
+      minimum: 256,
+      maximum: 64000,
+      description: "Generation ceiling for extraction. Too low truncates mid-answer, which is recorded as output_truncated rather than as malformed.",
+    },
     evidenceCaptureMaxCharsPerTurn: {
           "type": "integer",
           "minimum": 100,
@@ -478,6 +539,38 @@ export function parseConfig(value) {
           return issue(`${key} entries must be plain words, without regex metacharacters`);
         }
         out[key] = raw.map((x) => x.trim());
+        break;
+      }
+      case "claimExtractionEnabled": {
+        if (typeof raw !== "boolean") return issue("claimExtractionEnabled must be a boolean");
+        out.claimExtractionEnabled = raw;
+        break;
+      }
+      case "claimExtractionDir": {
+        if (typeof raw !== "string" || !raw.trim()) return issue("claimExtractionDir must be a path");
+        out.claimExtractionDir = raw.trim();
+        break;
+      }
+      case "claimExtractionAgentId": {
+        if (typeof raw !== "string") return issue("claimExtractionAgentId must be a string");
+        out.claimExtractionAgentId = raw.trim();
+        break;
+      }
+      case "claimExtractionRetentionDays":
+      case "claimExtractionTimeoutMs":
+      case "claimExtractionMaxTokens": {
+        if (!Number.isInteger(raw) || raw <= 0) return issue(`${field} must be a positive integer`);
+        out[field] = raw;
+        break;
+      }
+      case "claimExtractionTrafficClasses": {
+        if (!Array.isArray(raw)) return issue("claimExtractionTrafficClasses must be an array");
+        for (const value of raw) {
+          if (!TRAFFIC_CLASSES.includes(value)) {
+            return issue(`claimExtractionTrafficClasses must be one of: ${TRAFFIC_CLASSES.join(", ")}`);
+          }
+        }
+        out.claimExtractionTrafficClasses = [...raw];
         break;
       }
       case "evidenceCaptureEnabled": {

@@ -49,6 +49,13 @@ export function parseConfig(value: any): {
         evidenceCaptureMaxItemsPerTurn: 8;
         evidenceCaptureMaxCharsPerItem: 2000;
         evidenceCaptureMaxCharsPerTurn: 10000;
+        claimExtractionEnabled: false;
+        claimExtractionDir: any;
+        claimExtractionRetentionDays: 14;
+        claimExtractionTrafficClasses: string[];
+        claimExtractionAgentId: "";
+        claimExtractionTimeoutMs: 20000;
+        claimExtractionMaxTokens: 16000;
         promptFiles: any[];
     };
 };
@@ -102,6 +109,13 @@ export const DEFAULTS: Readonly<{
     evidenceCaptureMaxItemsPerTurn: 8;
     evidenceCaptureMaxCharsPerItem: 2000;
     evidenceCaptureMaxCharsPerTurn: 10000;
+    claimExtractionEnabled: false;
+    claimExtractionDir: any;
+    claimExtractionRetentionDays: 14;
+    claimExtractionTrafficClasses: string[];
+    claimExtractionAgentId: "";
+    claimExtractionTimeoutMs: 20000;
+    claimExtractionMaxTokens: 16000;
     promptFiles: any[];
 }>;
 export const CONFIG_JSON_SCHEMA: Readonly<{
@@ -314,6 +328,44 @@ export const CONFIG_JSON_SCHEMA: Readonly<{
             type: string;
             minimum: number;
             maximum: number;
+        };
+        claimExtractionEnabled: {
+            type: string;
+            description: string;
+        };
+        claimExtractionDir: {
+            type: string;
+            minLength: number;
+            description: string;
+        };
+        claimExtractionRetentionDays: {
+            type: string;
+            minimum: number;
+            maximum: number;
+            description: string;
+        };
+        claimExtractionTrafficClasses: {
+            type: string;
+            items: {
+                enum: string[];
+            };
+            description: string;
+        };
+        claimExtractionAgentId: {
+            type: string;
+            description: string;
+        };
+        claimExtractionTimeoutMs: {
+            type: string;
+            minimum: number;
+            maximum: number;
+            description: string;
+        };
+        claimExtractionMaxTokens: {
+            type: string;
+            minimum: number;
+            maximum: number;
+            description: string;
         };
         evidenceCaptureMaxCharsPerTurn: {
             type: string;
@@ -560,6 +612,44 @@ export const configSchema: Readonly<{
                 type: string;
                 minimum: number;
                 maximum: number;
+            };
+            claimExtractionEnabled: {
+                type: string;
+                description: string;
+            };
+            claimExtractionDir: {
+                type: string;
+                minLength: number;
+                description: string;
+            };
+            claimExtractionRetentionDays: {
+                type: string;
+                minimum: number;
+                maximum: number;
+                description: string;
+            };
+            claimExtractionTrafficClasses: {
+                type: string;
+                items: {
+                    enum: string[];
+                };
+                description: string;
+            };
+            claimExtractionAgentId: {
+                type: string;
+                description: string;
+            };
+            claimExtractionTimeoutMs: {
+                type: string;
+                minimum: number;
+                maximum: number;
+                description: string;
+            };
+            claimExtractionMaxTokens: {
+                type: string;
+                minimum: number;
+                maximum: number;
+                description: string;
             };
             evidenceCaptureMaxCharsPerTurn: {
                 type: string;

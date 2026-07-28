@@ -209,6 +209,18 @@ export {
 // without a limit.
 
 export {
+  // Claim extraction in production shadow mode: runs after delivery, writes to
+  // its own store, and has no authority over anything. Provider-neutral — the
+  // model is injected, and a model problem is an outcome rather than a throw.
+  runShadowExtraction,
+  buildShadowRecord,
+  writeShadowRecord,
+  pruneShadowExtractions,
+  CLAIM_SHADOW_SCHEMA_VERSION,
+  SHADOW_SKIP_REASONS,
+} from "./claim-shadow.js";
+
+export {
   // Offline join of a turn record to the excerpts it cites: what resolved, what
   // is missing, what no longer hashes to what was recorded. Reads through an
   // injected reader, so it has no opinion about where either store lives. It

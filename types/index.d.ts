@@ -236,6 +236,44 @@ export function createPlugin(deps?: {}): {
                     minimum: number;
                     maximum: number;
                 };
+                claimExtractionEnabled: {
+                    type: string;
+                    description: string;
+                };
+                claimExtractionDir: {
+                    type: string;
+                    minLength: number;
+                    description: string;
+                };
+                claimExtractionRetentionDays: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                claimExtractionTrafficClasses: {
+                    type: string;
+                    items: {
+                        enum: string[];
+                    };
+                    description: string;
+                };
+                claimExtractionAgentId: {
+                    type: string;
+                    description: string;
+                };
+                claimExtractionTimeoutMs: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                claimExtractionMaxTokens: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
                 evidenceCaptureMaxCharsPerTurn: {
                     type: string;
                     minimum: number;

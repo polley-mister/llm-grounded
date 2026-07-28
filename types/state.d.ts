@@ -54,6 +54,13 @@ export function createGroundingStore(opts?: {
     noteTelemetryTool(ref: any, call: any): GroundingEntry;
     /** Append one refused tool call. A count of zero is the success criterion. */
     noteTelemetryBlocked(ref: any, blocked: any): GroundingEntry;
+    /**
+     * Record what shadow extraction did. Reference and counts only.
+     *
+     * Never a support verdict: `claimSupported` has no setter anywhere in this
+     * store, because there is nothing in the package entitled to write one.
+     */
+    noteClaimExtraction(ref: any, outcome: any): GroundingEntry;
     /** Count one voice revision for this turn. */
     noteVoiceRevision(ref: any): GroundingEntry;
     /** Record one completed tool call. */
@@ -282,6 +289,14 @@ export type GroundingEntry = {
      * every reason, with counts
      */
     evidenceCaptureSkipReasons: Record<string, number>;
+    /**
+     * reference into the extraction store
+     */
+    claimExtractionId: string | null;
+    /**
+     * extracted, no_claims, abstained or skipped
+     */
+    claimExtractionStatus: string | null;
     telemetry: {
         features: object;
         startedAt: number | null;

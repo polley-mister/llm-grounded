@@ -140,7 +140,7 @@ export function parseExtraction(text: any, { draft, spans }: {
  *
  * @param {{userTurn?: string, draft?: string, conversationFacts?: string[]}} input
  * @param {{llm?: object, timeoutMs?: number, maxTokens?: number, signal?: object,
- *          minConfidence?: number}} [opts]
+ *          minConfidence?: number, agentId?: string}} [opts]
  */
 export function extractClaims(input?: {
     userTurn?: string;
@@ -152,6 +152,7 @@ export function extractClaims(input?: {
     maxTokens?: number;
     signal?: object;
     minConfidence?: number;
+    agentId?: string;
 }): Promise<{
     status: string;
     reason: any;

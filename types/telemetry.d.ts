@@ -65,6 +65,13 @@ export function buildTurnRecord(entry: any, extra?: {}): {
     overlayConfigResolved: boolean;
     overlayApplied: boolean;
     overlaySkipReason: any;
+    claimExtractionId: any;
+    claimExtractionStatus: any;
+    claimExtractionSkipReason: any;
+    claimExtractionAbstentionReason: any;
+    claimExtractionLatencyMs: any;
+    claimCount: any;
+    materialClaimCount: any;
     claimSupported: any;
     blockedTools: any;
     toolBlocked: boolean;

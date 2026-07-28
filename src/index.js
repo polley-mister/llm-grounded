@@ -29,6 +29,7 @@ import {
 } from "./classify.js";
 import { appliesToAgent, configSchema, factsApplyToAgent, parseConfig } from "./config.js";
 import { mayExposeFactTools } from "./authorization.js";
+import { pruneShadowExtractions, runShadowExtraction } from "./claim-shadow.js";
 import {
   CORRECTION_RULE,
   FACT_RULE,
@@ -233,6 +234,14 @@ export function createPlugin(deps = {}) {
    * diagnostic nobody can read is not a diagnostic.
    */
   let runtimeLogger = deps.logger ?? null;
+  /**
+   * The host's model capability, captured at registration.
+   *
+   * The hook context does not carry it, and shadow extraction runs from
+   * `agent_end` where there is no tool factory to hand one over. Held rather
+   * than re-resolved so there is one answer to "which runtime is this".
+   */
+  let runtimeLlm = deps.claimLlm ?? null;
 
   function log(level, message) {
     const l = runtimeLogger;
@@ -925,7 +934,38 @@ export function createPlugin(deps = {}) {
         originalDraft: entry.delivery?.sourceDraft ?? finalizeEvent?.lastAssistantMessage ?? null,
       });
       if (store.claimTerminalRecord(key, terminal.emittedLane)) {
-        await recordTurn(cfg, entry, finalizeEvent, ctx, terminal);
+        // Shadow claim extraction, here and nowhere earlier.
+        //
+        // The answer has already been delivered by this point — every delivery
+        // lane has run — so a model call here cannot revise it, delay it, or
+        // fail it. That ordering is the whole safety argument, and it is why
+        // this is not in before_agent_finalize where the draft is also
+        // available: there, it would sit between the operator and their reply.
+        //
+        // Awaited so the turn record can reference the extraction, bounded by
+        // its own timeout, and its result is recorded rather than acted on.
+        const shadow = await runShadowExtraction({
+          cfg,
+          entry,
+          finalText: terminal.final ?? finalizeEvent?.lastAssistantMessage ?? null,
+          userTurn: entry.userMessage,
+          llm: deps.claimLlm ?? ctx?.runtime?.llm ?? runtimeLlm,
+          logger: pluginLogger,
+          // Injectable only so a test can make the store fail for real. A
+          // permission-based failure is not reproducible for root, which is how
+          // the evidence writer's failure branch went untested for four
+          // releases.
+          fsOps: deps.claimExtractionFs,
+        });
+        if (shadow.ran || shadow.skipReason) store.noteClaimExtraction(key, shadow);
+        await recordTurn(cfg, store.get(key) ?? entry, finalizeEvent, ctx, terminal);
+        if (cfg.claimExtractionEnabled) {
+          await pruneShadowExtractions(
+            cfg.claimExtractionDir,
+            cfg.claimExtractionRetentionDays,
+            pluginLogger,
+          );
+        }
       }
     },
   };
@@ -1341,6 +1381,7 @@ export function createPlugin(deps = {}) {
       // gateway, so per-call re-resolution would add inconsistency without
       // buying anything.
       runtimeLogger = deps.logger ?? api?.logger ?? null;
+      runtimeLlm = deps.claimLlm ?? api?.runtime?.llm ?? null;
       runtimeSnapshot = resolveRuntimeSnapshot(api);
       if (runtimeSnapshot.status === "resolved") {
         const c = runtimeSnapshot.config;

@@ -555,7 +555,7 @@ const SYSTEM = [
  *
  * @param {{userTurn?: string, draft?: string, conversationFacts?: string[]}} input
  * @param {{llm?: object, timeoutMs?: number, maxTokens?: number, signal?: object,
- *          minConfidence?: number}} [opts]
+ *          minConfidence?: number, agentId?: string}} [opts]
  */
 export async function extractClaims(input = {}, opts = {}) {
   const draft = String(input.draft ?? "");
@@ -587,6 +587,11 @@ export async function extractClaims(input = {}, opts = {}) {
   try {
     result = await llm.complete({
       purpose: "claim-extraction",
+      // Routed to a configured agent when one is named, the way the CASE audit
+      // is: no `model` field, because the operator's configured model for that
+      // agent is the one that must run, and requesting an override would need
+      // llm.allowModelOverride, which this plugin deliberately does not have.
+      ...(opts.agentId ? { agentId: opts.agentId } : {}),
       messages: [
         { role: "system", content: SYSTEM },
         { role: "user", content: user },

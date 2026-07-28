@@ -96,6 +96,8 @@ const DEFAULT_MAX_ENTRIES = 200;
  * @property {boolean} trafficIdentityMismatch
  * @property {number} evidenceCaptureLostCount eligible excerpts dropped, not merely ineligible
  * @property {Record<string, number>} evidenceCaptureSkipReasons every reason, with counts
+ * @property {string|null} claimExtractionId reference into the extraction store
+ * @property {string|null} claimExtractionStatus extracted, no_claims, abstained or skipped
  * @property {{features: object, startedAt: number|null, drafts: string[],
  *             tools: object[], policy: object|null, blockedTools: object[]}} telemetry
  * @property {number} createdAt
@@ -266,6 +268,16 @@ export function createGroundingStore(opts = {}) {
         // Every reason and how often, so a turn that captured some evidence and
         // skipped an unrelated tool call can say both.
         evidenceCaptureSkipReasons: {},
+        // Claim extraction, shadow. A reference and an outcome only: the
+        // claims themselves are verbatim answer text and live in their own
+        // store, like evidence excerpts and for the same reason.
+        claimExtractionId: null,
+        claimExtractionStatus: null,
+        claimExtractionSkipReason: null,
+        claimExtractionAbstentionReason: null,
+        claimExtractionLatencyMs: null,
+        claimCount: 0,
+        materialClaimCount: 0,
         // Whether the plugin could resolve its own configuration at all.
         // Distinct from "the feature is off": one is a fault, the other is a
         // choice, and reporting them the same way hides the fault.
@@ -350,6 +362,26 @@ export function createGroundingStore(opts = {}) {
       const entry = this.get(ref);
       if (!entry) return null;
       entry.telemetry.blockedTools.push(blocked);
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /**
+     * Record what shadow extraction did. Reference and counts only.
+     *
+     * Never a support verdict: `claimSupported` has no setter anywhere in this
+     * store, because there is nothing in the package entitled to write one.
+     */
+    noteClaimExtraction(ref, outcome) {
+      const entry = this.get(ref);
+      if (!entry || !outcome) return null;
+      entry.claimExtractionId = outcome.extractionId ?? null;
+      entry.claimExtractionStatus = outcome.status ?? null;
+      entry.claimExtractionSkipReason = outcome.skipReason ?? null;
+      entry.claimExtractionAbstentionReason = outcome.abstentionReason ?? null;
+      entry.claimExtractionLatencyMs = outcome.latencyMs ?? null;
+      entry.claimCount = outcome.claimCount ?? 0;
+      entry.materialClaimCount = outcome.materialClaimCount ?? 0;
       entry.updatedAt = now();
       return entry;
     },

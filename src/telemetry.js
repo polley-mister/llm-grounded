@@ -333,8 +333,20 @@ export function buildTurnRecord(entry, extra = {}) {
     overlayConfigResolved: entry?.overlayConfigResolved !== false,
     overlayApplied: Boolean(entry?.overlayApplied),
     overlaySkipReason: entry?.overlaySkipReason ?? null,
-    // A captured excerpt says nothing about whether any claim holds. Kept
-    // explicitly null so no consumer infers support from capture success.
+    // Shadow claim extraction: a reference and an outcome. The claims are
+    // verbatim answer text and stay in their own store, exactly as evidence
+    // excerpts do — telemetry is the one place verbatim content must not be.
+    claimExtractionId: entry?.claimExtractionId ?? null,
+    claimExtractionStatus: entry?.claimExtractionStatus ?? null,
+    claimExtractionSkipReason: entry?.claimExtractionSkipReason ?? null,
+    claimExtractionAbstentionReason: entry?.claimExtractionAbstentionReason ?? null,
+    claimExtractionLatencyMs: entry?.claimExtractionLatencyMs ?? null,
+    claimCount: entry?.claimCount ?? 0,
+    materialClaimCount: entry?.materialClaimCount ?? 0,
+
+    // Neither a captured excerpt nor an extracted claim says anything about
+    // whether that claim holds. Kept explicitly null so no consumer infers
+    // support from either one having happened.
     claimSupported: null,
 
     // Safety refusals, kept even though they are rare: a count of zero is the
