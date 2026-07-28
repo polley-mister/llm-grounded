@@ -184,6 +184,21 @@ export function resetBuildInfo() {
   buildInfoCache = undefined;
 }
 
+/**
+ * Overall capture outcome for a turn.
+ *
+ * `partial` matters: at least one item stored and at least one eligible item
+ * lost is a different state from either "worked" or "failed", and collapsing it
+ * would hide systematic truncation behind an apparent success.
+ */
+function evidenceCaptureStatus(entry) {
+  if (!entry?.evidenceCaptureAttempted) return "not_applicable";
+  const captured = entry.evidenceCapturedCount ?? 0;
+  const lost = (entry.evidenceCaptureSkippedCount ?? 0) + (entry.evidenceCaptureFailedCount ?? 0);
+  if (captured === 0) return "failed";
+  return lost > 0 ? "partial" : "complete";
+}
+
 export function buildTurnRecord(entry, extra = {}) {
   const t = entry?.telemetry ?? {};
   const drafts = Array.isArray(t.drafts) ? t.drafts : [];
@@ -255,6 +270,19 @@ export function buildTurnRecord(entry, extra = {}) {
     // here means that promise broke, and is a smoke-test failure.
     terminalTextMismatch: Boolean(extra.terminalTextMismatch),
     observedLanes: extra.observedLanes ?? [],
+
+    // Evidence capture. References and counts only — an excerpt here would put
+    // verbatim third-party content into the ordinary telemetry corpus, which is
+    // exactly what the separate store exists to avoid.
+    evidenceIds: entry?.evidenceIds ?? [],
+    evidenceCaptureAttempted: Boolean(entry?.evidenceCaptureAttempted),
+    evidenceCapturedCount: entry?.evidenceCapturedCount ?? 0,
+    evidenceCaptureSkippedCount: entry?.evidenceCaptureSkippedCount ?? 0,
+    evidenceCaptureFailedCount: entry?.evidenceCaptureFailedCount ?? 0,
+    evidenceCaptureStatus: evidenceCaptureStatus(entry),
+    // A captured excerpt says nothing about whether any claim holds. Kept
+    // explicitly null so no consumer infers support from capture success.
+    claimSupported: null,
 
     // Safety refusals, kept even though they are rare: a count of zero is the
     // success criterion and needs a field to be zero in.

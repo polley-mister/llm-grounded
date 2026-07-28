@@ -179,6 +179,70 @@ export declare function createPlugin(deps?: {}): {
                     };
                     description: string;
                 };
+                evidenceCaptureEnabled: {
+                    type: string;
+                    description: string;
+                };
+                evidenceCaptureDir: {
+                    type: string;
+                    minLength: number;
+                    description: string;
+                };
+                evidenceCaptureRetentionDays: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                evidenceCaptureTools: {
+                    type: string;
+                    items: {
+                        type: string;
+                        minLength: number;
+                    };
+                    description: string;
+                };
+                evidenceCaptureRuntimeTools: {
+                    type: string;
+                    items: {
+                        type: string;
+                        minLength: number;
+                    };
+                    description: string;
+                };
+                evidenceCaptureTrafficClasses: {
+                    type: string;
+                    items: {
+                        enum: string[];
+                    };
+                    description: string;
+                };
+                evidenceCaptureTimeoutMs: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                evidenceCaptureMaxItemsPerCall: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                };
+                evidenceCaptureMaxItemsPerTurn: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                };
+                evidenceCaptureMaxCharsPerItem: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                };
+                evidenceCaptureMaxCharsPerTurn: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                };
                 trafficClasses: {
                     type: string;
                     additionalProperties: boolean;
@@ -467,6 +531,70 @@ declare const plugin: {
                         minLength: number;
                     };
                     description: string;
+                };
+                evidenceCaptureEnabled: {
+                    type: string;
+                    description: string;
+                };
+                evidenceCaptureDir: {
+                    type: string;
+                    minLength: number;
+                    description: string;
+                };
+                evidenceCaptureRetentionDays: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                evidenceCaptureTools: {
+                    type: string;
+                    items: {
+                        type: string;
+                        minLength: number;
+                    };
+                    description: string;
+                };
+                evidenceCaptureRuntimeTools: {
+                    type: string;
+                    items: {
+                        type: string;
+                        minLength: number;
+                    };
+                    description: string;
+                };
+                evidenceCaptureTrafficClasses: {
+                    type: string;
+                    items: {
+                        enum: string[];
+                    };
+                    description: string;
+                };
+                evidenceCaptureTimeoutMs: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                evidenceCaptureMaxItemsPerCall: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                };
+                evidenceCaptureMaxItemsPerTurn: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                };
+                evidenceCaptureMaxCharsPerItem: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                };
+                evidenceCaptureMaxCharsPerTurn: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
                 };
                 trafficClasses: {
                     type: string;

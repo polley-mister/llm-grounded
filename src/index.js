@@ -46,6 +46,12 @@ import { createSessionOverlay, mergeOverlays } from "./session-overlay.js";
 import { resolveDelivery, selectTerminalObservation } from "./delivery.js";
 import { resolveTrafficClass } from "./traffic.js";
 import {
+  BOUNDS as EVIDENCE_BOUNDS,
+  captureToolCallEvidence,
+  createTurnBudget,
+  pruneEvidenceCapture,
+} from "./evidence-capture.js";
+import {
   createFactTool,
   FACT_TOOL_NAME,
   isDirectOwnerSession,
@@ -834,6 +840,97 @@ export function createPlugin(deps = {}) {
     return { ...decision, sessionOverlayApplied: overlayActive };
   }
 
+  /** Per-turn evidence budgets, so limits are enforced across tool calls. */
+  const evidenceBudgets = new Map();
+
+  /**
+   * Capture bounded evidence from one tool result.
+   *
+   * Awaited, so the ids exist before agent_end writes telemetry — a detached
+   * promise would let a record reference evidence that had not finished
+   * writing, or never wrote at all. Bounded by its own timeout so awaiting it
+   * cannot stall a turn.
+   *
+   * Every failure path returns quietly: capture is an observer, and a
+   * bookkeeping problem must not be able to change what the operator receives.
+   */
+  async function captureToolEvidence(cfg, event, ctx, result, transformsApplied) {
+    try {
+      if (!cfg?.evidenceCaptureEnabled) return;
+
+      const tool = event?.toolName;
+      const runtimeTools = cfg.evidenceCaptureRuntimeTools ?? [];
+      if (!(cfg.evidenceCaptureTools ?? []).includes(tool) && !runtimeTools.includes(tool)) return;
+
+      // A truthy result object is not proof of success. Use the same error
+      // detection the grounding path uses, so "succeeded" means one thing.
+      if (isErrorResult(result)) return;
+
+      const traffic = resolveTrafficClass(
+        {
+          sessionId: event?.sessionId ?? ctx?.sessionId,
+          sessionKey: ctx?.sessionKey ?? event?.sessionKey,
+          agentId: ctx?.agentId,
+        },
+        cfg.trafficClasses,
+      );
+      // Heartbeats and scheduled runs are excluded initially: volume without
+      // calibration value, since claim support is being characterised on human
+      // answers.
+      if (!(cfg.evidenceCaptureTrafficClasses ?? []).includes(traffic.trafficClass)) return;
+
+      const key = { runId: ctx?.runId ?? event?.runId, sessionKey: ctx?.sessionKey ?? event?.sessionKey };
+      const budgetKey = key.runId ?? key.sessionKey;
+      if (!budgetKey) return;
+      if (!evidenceBudgets.has(budgetKey)) {
+        evidenceBudgets.set(budgetKey, createTurnBudget({
+          itemsPerCall: cfg.evidenceCaptureMaxItemsPerCall ?? EVIDENCE_BOUNDS.itemsPerCall,
+          itemsPerTurn: cfg.evidenceCaptureMaxItemsPerTurn ?? EVIDENCE_BOUNDS.itemsPerTurn,
+          charsPerTurn: cfg.evidenceCaptureMaxCharsPerTurn ?? EVIDENCE_BOUNDS.charsPerTurn,
+        }));
+        // Bounded, and only ever for turns that actually captured something.
+        if (evidenceBudgets.size > 200) {
+          evidenceBudgets.delete(evidenceBudgets.keys().next().value);
+        }
+      }
+
+      const capture = captureToolCallEvidence({
+        dir: cfg.evidenceCaptureDir,
+        budget: evidenceBudgets.get(budgetKey),
+        logger: deps.logger,
+        tool,
+        result,
+        params: event?.params,
+        turnId: key.runId ?? key.sessionKey,
+        toolCallId: event?.toolCallId ?? null,
+        runtimeTools,
+        transformsApplied,
+        bounds: {
+          excerptChars: cfg.evidenceCaptureMaxCharsPerItem ?? EVIDENCE_BOUNDS.excerptChars,
+          itemsPerCall: cfg.evidenceCaptureMaxItemsPerCall ?? EVIDENCE_BOUNDS.itemsPerCall,
+          itemsPerTurn: cfg.evidenceCaptureMaxItemsPerTurn ?? EVIDENCE_BOUNDS.itemsPerTurn,
+          charsPerTurn: cfg.evidenceCaptureMaxCharsPerTurn ?? EVIDENCE_BOUNDS.charsPerTurn,
+        },
+      });
+
+      const timeoutMs = cfg.evidenceCaptureTimeoutMs ?? 400;
+      const outcome = await Promise.race([
+        capture,
+        new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), timeoutMs)),
+      ]);
+
+      if (outcome?.timedOut) {
+        store?.noteEvidenceCapture?.(key, { evidenceIds: [], captured: 0, skipped: 1, failed: 0 });
+        deps.logger?.debug?.(`llmGrounded: evidence capture timed out after ${timeoutMs}ms`);
+        return;
+      }
+      store?.noteEvidenceCapture?.(key, outcome);
+    } catch (err) {
+      // Deliberately swallowed. Nothing about capture is worth failing a turn.
+      deps.logger?.warn?.(`llmGrounded: evidence capture error: ${String(err?.message ?? err)}`);
+    }
+  }
+
   /** Why a lane substituted the terminal text, for its cancel/reason field. */
   function deliveryReason(entry, decision) {
     if (decision.action === "replace") return `llmGrounded: ${entry.kind} grounding not verified`;
@@ -1006,6 +1103,11 @@ export function createPlugin(deps = {}) {
     });
     await writeTurnRecord(cfg.telemetryDir, record, deps.logger);
     await pruneTurnRecords(cfg.telemetryDir, cfg.telemetryRetentionDays, deps.logger);
+    if (cfg.evidenceCaptureEnabled) {
+      // Its own retention, shorter than telemetry's: excerpts are verbatim
+      // third-party content and should not accumulate indefinitely.
+      await pruneEvidenceCapture(cfg.evidenceCaptureDir, cfg.evidenceCaptureRetentionDays, deps.logger);
+    }
     if (k) {
       telemetryFeatures.delete(k);
       telemetryDrafts.delete(k);
@@ -1110,29 +1212,54 @@ export function createPlugin(deps = {}) {
       // Promise outright. Agent tool-result middleware is the seam that does.
       api.registerAgentToolResultMiddleware?.(
         async (event, ctx) => {
-          if (!EVIDENCE_TOOLS.includes(event?.toolName)) return;
           const cfg = middlewareConfig(api);
-          // Newer runtimes may provide agentId directly. OpenClaw 2026.7.1
-          // does not, so accept only a call id previously authorized by the
-          // trusted before_tool_call hook and consume it exactly once.
-          const contextAuthorizes =
-            typeof ctx?.agentId === "string" && factsApplyToAgent(cfg, ctx.agentId);
-          const callAuthorizes = overlayCalls.delete(event?.toolCallId);
-          if (!contextAuthorizes && !callAuthorizes) return;
-          const loaded = await ensureOverlay(cfg).load();
-          // A correction the vault refused is still true for this conversation.
-          // The session layer wins on conflict: it exists only because the
-          // durable record is the thing that is wrong.
           const sessionKey = ctx?.sessionKey ?? event?.sessionKey ?? null;
-          const merged = sessionKey
-            ? mergeOverlays(loaded, sessionOverlay.snapshot(sessionKey))
-            : loaded;
-          const applied = overlayToolResult(merged, event?.result);
-          if (!applied) return;
-          deps.logger?.debug?.(
-            `llmGrounded: overlaid ${applied.conflicts.length} authoritative fact(s) on ${event.toolName}`,
-          );
-          return { result: applied.result };
+
+          // The effective result: what the model will actually read. Starts as
+          // what the tool returned and is replaced only by a trusted overlay.
+          let effective = event?.result;
+          let overlaid = null;
+          const transformsApplied = [];
+
+          if (EVIDENCE_TOOLS.includes(event?.toolName)) {
+            // Newer runtimes may provide agentId directly. OpenClaw 2026.7.1
+            // does not, so accept only a call id previously authorized by the
+            // trusted before_tool_call hook and consume it exactly once.
+            const contextAuthorizes =
+              typeof ctx?.agentId === "string" && factsApplyToAgent(cfg, ctx.agentId);
+            const callAuthorizes = overlayCalls.delete(event?.toolCallId);
+            if (contextAuthorizes || callAuthorizes) {
+              const loaded = await ensureOverlay(cfg).load();
+              // A correction the vault refused is still true for this
+              // conversation. The session layer wins on conflict: it exists
+              // only because the durable record is the thing that is wrong.
+              const merged = sessionKey
+                ? mergeOverlays(loaded, sessionOverlay.snapshot(sessionKey))
+                : loaded;
+              const applied = overlayToolResult(merged, effective);
+              if (applied) {
+                effective = applied.result;
+                overlaid = applied.result;
+                transformsApplied.push("durable_fact_overlay");
+                if (sessionKey && sessionOverlay.active(sessionKey)) {
+                  transformsApplied.push("session_fact_overlay");
+                }
+                deps.logger?.debug?.(
+                  `llmGrounded: overlaid ${applied.conflicts.length} authoritative fact(s) on ${event.toolName}`,
+                );
+              }
+            }
+          }
+
+          // Capture what the model will read, not what the tool first said. A
+          // pre-overlay excerpt would be the wrong thing to check a claim
+          // against later: the overlay exists precisely because the raw result
+          // was stale.
+          await captureToolEvidence(cfg, event, ctx, effective, transformsApplied);
+
+          // Returned unchanged unless an overlay rewrote it. Capture is an
+          // observer and must never be able to alter a tool result.
+          return overlaid ? { result: overlaid } : undefined;
         },
         // Declared in openclaw.plugin.json as contracts.agentToolResultMiddleware.
         // Registration is refused without it, and refused again unless the

@@ -51,6 +51,13 @@ export declare function buildTurnRecord(entry: any, extra?: {}): {
     textMutatedByPlugin: boolean;
     terminalTextMismatch: boolean;
     observedLanes: any;
+    evidenceIds: any;
+    evidenceCaptureAttempted: boolean;
+    evidenceCapturedCount: any;
+    evidenceCaptureSkippedCount: any;
+    evidenceCaptureFailedCount: any;
+    evidenceCaptureStatus: string;
+    claimSupported: null;
     blockedTools: any;
     toolBlocked: boolean;
     trafficClass: any;

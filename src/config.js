@@ -65,6 +65,28 @@ export const DEFAULTS = Object.freeze({
   // wrong in the data rather than silently wrong, which is the failure mode
   // that made the first corpus unusable.
   trafficClasses: { bySessionPrefix: {}, byAgent: {}, default: "system" },
+
+  // Evidence capture. Deliberately a *separate* directory from evidenceDir:
+  // that one holds audit packets with different semantics and retention, and
+  // two incompatible record formats sharing a path would become
+  // indistinguishable purely because both are called evidence.
+  evidenceCaptureEnabled: false,
+  evidenceCaptureDir: path.join(varDir(), "evidence-capture"),
+  evidenceCaptureRetentionDays: 14,
+  // Allowlist. A tool with no adapter is not captured generically.
+  evidenceCaptureTools: ["web_search", "web_fetch", "memory_search", "wiki_search", "wiki_get"],
+  // Runtime/status tools, which get the narrow rendered-text adapter. Empty by
+  // default: these payloads are the most likely to carry hosts, paths and
+  // internal identifiers, so each one is an explicit operator decision.
+  evidenceCaptureRuntimeTools: [],
+  // Heartbeats and scheduled runs are excluded initially. They would add
+  // storage volume without helping calibrate claim support on human answers.
+  evidenceCaptureTrafficClasses: ["human", "synthetic_test"],
+  evidenceCaptureTimeoutMs: 400,
+  evidenceCaptureMaxItemsPerCall: 5,
+  evidenceCaptureMaxItemsPerTurn: 8,
+  evidenceCaptureMaxCharsPerItem: 2000,
+  evidenceCaptureMaxCharsPerTurn: 10000,
   // Prompt surfaces to hash into each telemetry record's `promptHash`. A
   // wording change here alters behaviour without touching code, so a corpus
   // that cannot see it will eventually be used to justify a wrong conclusion.
@@ -222,6 +244,76 @@ export const CONFIG_JSON_SCHEMA = Object.freeze({
       items: { type: "string", minLength: 1 },
       description:
         "Absolute paths to the prompt surfaces hashed into each telemetry record. Contents are never copied into a record. Missing files hash as absent.",
+    },
+    evidenceCaptureEnabled: {
+          "type": "boolean",
+          "description": "Capture bounded redacted evidence excerpts. Shadow only: capture never alters a tool result, an answer, or the turn."
+    },
+    evidenceCaptureDir: {
+          "type": "string",
+          "minLength": 1,
+          "description": "Directory for evidence excerpts. Must differ from evidenceDir, which holds audit packets with different semantics and retention."
+    },
+    evidenceCaptureRetentionDays: {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Days of evidence excerpts retained. Shorter than telemetry by default: excerpts are verbatim third-party content."
+    },
+    evidenceCaptureTools: {
+          "type": "array",
+          "items": {
+                "type": "string",
+                "minLength": 1
+          },
+          "description": "Tools whose results may be captured. An allowlist; a tool with no adapter is never captured generically."
+    },
+    evidenceCaptureRuntimeTools: {
+          "type": "array",
+          "items": {
+                "type": "string",
+                "minLength": 1
+          },
+          "description": "Runtime or status tools captured with the narrow rendered-text adapter."
+    },
+    evidenceCaptureTrafficClasses: {
+          "type": "array",
+          "items": {
+                "enum": [
+                      "human",
+                      "heartbeat",
+                      "scheduled_automation",
+                      "system",
+                      "synthetic_test"
+                ]
+          },
+          "description": "Traffic classes eligible for capture. Heartbeat and scheduled automation are excluded by default."
+    },
+    evidenceCaptureTimeoutMs: {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Budget for bounded local capture. On timeout the tool result is returned unchanged."
+    },
+    evidenceCaptureMaxItemsPerCall: {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+    },
+    evidenceCaptureMaxItemsPerTurn: {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+    },
+    evidenceCaptureMaxCharsPerItem: {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 20000
+    },
+    evidenceCaptureMaxCharsPerTurn: {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 100000
     },
     trafficClasses: {
       type: "object",
@@ -386,6 +478,50 @@ export function parseConfig(value) {
           return issue(`${key} entries must be plain words, without regex metacharacters`);
         }
         out[key] = raw.map((x) => x.trim());
+        break;
+      }
+      case "evidenceCaptureEnabled": {
+        if (typeof raw !== "boolean") return issue("evidenceCaptureEnabled must be a boolean");
+        out.evidenceCaptureEnabled = raw;
+        break;
+      }
+      case "evidenceCaptureDir": {
+        if (typeof raw !== "string" || !raw.trim()) return issue("evidenceCaptureDir must be a path");
+        if (raw.trim() === out.evidenceDir) {
+          // The audit store and the capture store hold different record shapes
+          // with different retention. Sharing a path makes them one pile.
+          return issue("evidenceCaptureDir must differ from evidenceDir");
+        }
+        out.evidenceCaptureDir = raw.trim();
+        break;
+      }
+      case "evidenceCaptureRetentionDays":
+      case "evidenceCaptureTimeoutMs":
+      case "evidenceCaptureMaxItemsPerCall":
+      case "evidenceCaptureMaxItemsPerTurn":
+      case "evidenceCaptureMaxCharsPerItem":
+      case "evidenceCaptureMaxCharsPerTurn": {
+        if (!Number.isInteger(raw) || raw <= 0) return issue(`${key} must be a positive integer`);
+        out[key] = raw;
+        break;
+      }
+      case "evidenceCaptureTools":
+      case "evidenceCaptureRuntimeTools": {
+        if (!Array.isArray(raw) || raw.some((x) => typeof x !== "string" || !x.trim())) {
+          return issue(`${key} must be an array of tool names`);
+        }
+        out[key] = raw.map((x) => x.trim());
+        break;
+      }
+      case "evidenceCaptureTrafficClasses": {
+        if (!Array.isArray(raw)) return issue("evidenceCaptureTrafficClasses must be an array");
+        const allowed = new Set(TRAFFIC_CLASSES);
+        for (const cls of raw) {
+          if (!allowed.has(cls)) {
+            return issue(`evidenceCaptureTrafficClasses entries must be one of: ${TRAFFIC_CLASSES.join(", ")}`);
+          }
+        }
+        out.evidenceCaptureTrafficClasses = [...raw];
         break;
       }
       case "trafficClasses": {

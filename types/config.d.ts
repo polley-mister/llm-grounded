@@ -27,6 +27,17 @@ export declare const DEFAULTS: Readonly<{
         byAgent: {};
         default: string;
     };
+    evidenceCaptureEnabled: false;
+    evidenceCaptureDir: any;
+    evidenceCaptureRetentionDays: 14;
+    evidenceCaptureTools: string[];
+    evidenceCaptureRuntimeTools: never[];
+    evidenceCaptureTrafficClasses: string[];
+    evidenceCaptureTimeoutMs: 400;
+    evidenceCaptureMaxItemsPerCall: 5;
+    evidenceCaptureMaxItemsPerTurn: 8;
+    evidenceCaptureMaxCharsPerItem: 2000;
+    evidenceCaptureMaxCharsPerTurn: 10000;
     promptFiles: any[];
 }>;
 export declare const CONFIG_JSON_SCHEMA: Readonly<{
@@ -181,6 +192,70 @@ export declare const CONFIG_JSON_SCHEMA: Readonly<{
             };
             description: string;
         };
+        evidenceCaptureEnabled: {
+            type: string;
+            description: string;
+        };
+        evidenceCaptureDir: {
+            type: string;
+            minLength: number;
+            description: string;
+        };
+        evidenceCaptureRetentionDays: {
+            type: string;
+            minimum: number;
+            maximum: number;
+            description: string;
+        };
+        evidenceCaptureTools: {
+            type: string;
+            items: {
+                type: string;
+                minLength: number;
+            };
+            description: string;
+        };
+        evidenceCaptureRuntimeTools: {
+            type: string;
+            items: {
+                type: string;
+                minLength: number;
+            };
+            description: string;
+        };
+        evidenceCaptureTrafficClasses: {
+            type: string;
+            items: {
+                enum: string[];
+            };
+            description: string;
+        };
+        evidenceCaptureTimeoutMs: {
+            type: string;
+            minimum: number;
+            maximum: number;
+            description: string;
+        };
+        evidenceCaptureMaxItemsPerCall: {
+            type: string;
+            minimum: number;
+            maximum: number;
+        };
+        evidenceCaptureMaxItemsPerTurn: {
+            type: string;
+            minimum: number;
+            maximum: number;
+        };
+        evidenceCaptureMaxCharsPerItem: {
+            type: string;
+            minimum: number;
+            maximum: number;
+        };
+        evidenceCaptureMaxCharsPerTurn: {
+            type: string;
+            minimum: number;
+            maximum: number;
+        };
         trafficClasses: {
             type: string;
             additionalProperties: boolean;
@@ -248,6 +323,17 @@ export declare function parseConfig(value: any): {
             byAgent: {};
             default: string;
         };
+        evidenceCaptureEnabled: false;
+        evidenceCaptureDir: any;
+        evidenceCaptureRetentionDays: 14;
+        evidenceCaptureTools: string[];
+        evidenceCaptureRuntimeTools: never[];
+        evidenceCaptureTrafficClasses: string[];
+        evidenceCaptureTimeoutMs: 400;
+        evidenceCaptureMaxItemsPerCall: 5;
+        evidenceCaptureMaxItemsPerTurn: 8;
+        evidenceCaptureMaxCharsPerItem: 2000;
+        evidenceCaptureMaxCharsPerTurn: 10000;
         promptFiles: any[];
     };
 };
@@ -405,6 +491,70 @@ export declare const configSchema: Readonly<{
                     minLength: number;
                 };
                 description: string;
+            };
+            evidenceCaptureEnabled: {
+                type: string;
+                description: string;
+            };
+            evidenceCaptureDir: {
+                type: string;
+                minLength: number;
+                description: string;
+            };
+            evidenceCaptureRetentionDays: {
+                type: string;
+                minimum: number;
+                maximum: number;
+                description: string;
+            };
+            evidenceCaptureTools: {
+                type: string;
+                items: {
+                    type: string;
+                    minLength: number;
+                };
+                description: string;
+            };
+            evidenceCaptureRuntimeTools: {
+                type: string;
+                items: {
+                    type: string;
+                    minLength: number;
+                };
+                description: string;
+            };
+            evidenceCaptureTrafficClasses: {
+                type: string;
+                items: {
+                    enum: string[];
+                };
+                description: string;
+            };
+            evidenceCaptureTimeoutMs: {
+                type: string;
+                minimum: number;
+                maximum: number;
+                description: string;
+            };
+            evidenceCaptureMaxItemsPerCall: {
+                type: string;
+                minimum: number;
+                maximum: number;
+            };
+            evidenceCaptureMaxItemsPerTurn: {
+                type: string;
+                minimum: number;
+                maximum: number;
+            };
+            evidenceCaptureMaxCharsPerItem: {
+                type: string;
+                minimum: number;
+                maximum: number;
+            };
+            evidenceCaptureMaxCharsPerTurn: {
+                type: string;
+                minimum: number;
+                maximum: number;
             };
             trafficClasses: {
                 type: string;

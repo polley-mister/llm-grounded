@@ -167,6 +167,17 @@ export declare function createGroundingStore(opts?: {
      * `external` distinguishes a lane that sends outward from the transcript
      * write, which is the only lane `deliver:false` reaches.
      */
+    /**
+     * Record the outcome of capturing one tool call's evidence.
+     *
+     * Never throws and never rejects a turn: capture is best-effort by design,
+     * and a bookkeeping failure must not be able to change what the operator
+     * receives.
+     */
+    noteEvidenceCapture({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }, outcome: any): GroundingEntry | null;
     observeLane({ runId, sessionKey }: {
         runId: any;
         sessionKey: any;

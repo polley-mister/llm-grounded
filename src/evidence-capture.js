@@ -26,6 +26,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { extractEvidenceItems } from "./evidence-adapters.js";
 import { looksSecret } from "./values.js";
 import { varDir } from "./paths.js";
 
@@ -51,9 +52,13 @@ export const EVIDENCE_TOOLS = Object.freeze({
 
 export const BOUNDS = Object.freeze({
   excerptChars: 2000,
+  itemsPerCall: 5,
   itemsPerTurn: 8,
   charsPerTurn: 10000,
 });
+
+/** How long a bounded local capture may take before the turn moves on. */
+export const DEFAULT_CAPTURE_TIMEOUT_MS = 400;
 
 /** Days before an evidence file is pruned. Shorter than telemetry on purpose. */
 export const DEFAULT_RETENTION_DAYS = 14;
@@ -143,13 +148,19 @@ export function buildEvidenceRecord({
   tool,
   params,
   result,
+  evidenceItem = null,
+  evidenceView = "effective_tool_result",
+  transformsApplied = [],
   now = () => Date.now(),
   id = () => `ev_${randomUUID()}`,
 } = {}) {
   const sourceType = EVIDENCE_TOOLS[tool];
   if (!sourceType) return { captureStatus: "skipped", reason: "tool_not_capturable" };
 
-  const raw = extractText(result);
+  // An adapter-produced item is preferred: it has already discarded everything
+  // the tool returned except allowlisted fields. `result` remains supported for
+  // the isolated unit tests and for tools whose adapter yields a single item.
+  const raw = evidenceItem ? String(evidenceItem.excerpt ?? "") : extractText(result);
   if (!raw.trim()) return { captureStatus: "skipped", reason: "no_text_content" };
 
   const redacted = redactExcerpt(raw);
@@ -183,6 +194,13 @@ export function buildEvidenceRecord({
       truncated: bounded.truncated,
       redacted: redacted.redactionCount > 0,
       redactionCount: redacted.redactionCount,
+      title: evidenceItem?.title ?? null,
+      source: evidenceItem?.source ?? null,
+      // Which version of the result this excerpt is. Entailment must judge the
+      // evidence the answering model actually saw, so a pre-overlay excerpt
+      // would be the wrong thing to check a claim against.
+      evidenceView,
+      transformsApplied: [...transformsApplied],
       // A tool that ran is not a claim that holds. This stays null until an
       // entailment stage exists to set it.
       claimSupported: null,
@@ -281,6 +299,52 @@ export async function pruneEvidenceCapture(dir, retentionDays = DEFAULT_RETENTIO
  * Returns what telemetry should record: references and outcome flags, never
  * excerpt text.
  */
+/**
+ * Capture every evidence item from one successful tool call.
+ *
+ * Bounded three ways — per item, per call, per turn — and every rejection is
+ * reported rather than silently dropped, because "we captured nothing" and "we
+ * captured nothing because the budget was spent" are different facts about a
+ * turn.
+ */
+export async function captureToolCallEvidence({
+  dir,
+  budget,
+  logger,
+  tool,
+  result,
+  runtimeTools = [],
+  bounds = BOUNDS,
+  ...rest
+}) {
+  const items = extractEvidenceItems(tool, result, {
+    maxItems: bounds.itemsPerCall,
+    runtimeTools,
+  });
+  if (!items.length) {
+    return { evidenceIds: [], captured: 0, skipped: 1, failed: 0, reasons: ["no_evidence_items"] };
+  }
+
+  const evidenceIds = [];
+  const reasons = [];
+  let captured = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const evidenceItem of items) {
+    const out = await captureEvidence({ dir, budget, logger, tool, result, evidenceItem, ...rest });
+    if (out.captured) {
+      evidenceIds.push(out.evidenceId);
+      captured += 1;
+      continue;
+    }
+    if (out.reason === "write_failed") failed += 1;
+    else skipped += 1;
+    reasons.push(out.reason);
+  }
+  return { evidenceIds, captured, skipped, failed, reasons };
+}
+
 export async function captureEvidence({ dir, budget, logger, ...input }) {
   const built = buildEvidenceRecord(input);
   if (built.captureStatus !== "captured") {

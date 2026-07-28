@@ -228,6 +228,14 @@ export function createGroundingStore(opts = {}) {
         // otherwise "was this text observed leaving" is unanswerable for
         // ordinary turns, which are almost all of them.
         deliveryObservations: [],
+        // Evidence capture is shadow bookkeeping. Ids and counts only: an
+        // excerpt in the turn state would end up in telemetry, which is the one
+        // place it must not be.
+        evidenceIds: [],
+        evidenceCaptureAttempted: false,
+        evidenceCapturedCount: 0,
+        evidenceCaptureSkippedCount: 0,
+        evidenceCaptureFailedCount: 0,
         createdAt: ts,
         updatedAt: ts,
       };
@@ -395,6 +403,25 @@ export function createGroundingStore(opts = {}) {
      * `external` distinguishes a lane that sends outward from the transcript
      * write, which is the only lane `deliver:false` reaches.
      */
+    /**
+     * Record the outcome of capturing one tool call's evidence.
+     *
+     * Never throws and never rejects a turn: capture is best-effort by design,
+     * and a bookkeeping failure must not be able to change what the operator
+     * receives.
+     */
+    noteEvidenceCapture({ runId, sessionKey }, outcome) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry || !outcome) return null;
+      entry.evidenceCaptureAttempted = true;
+      for (const id of outcome.evidenceIds ?? []) entry.evidenceIds.push(id);
+      entry.evidenceCapturedCount += outcome.captured ?? 0;
+      entry.evidenceCaptureSkippedCount += outcome.skipped ?? 0;
+      entry.evidenceCaptureFailedCount += outcome.failed ?? 0;
+      entry.updatedAt = now();
+      return entry;
+    },
+
     observeLane({ runId, sessionKey }, { lane, text, external = false }) {
       const entry = this.get({ runId, sessionKey });
       if (!entry || !lane) return null;

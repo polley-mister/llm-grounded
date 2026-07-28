@@ -17,9 +17,12 @@ export declare const EVIDENCE_TOOLS: Readonly<{
 }>;
 export declare const BOUNDS: Readonly<{
     excerptChars: 2000;
+    itemsPerCall: 5;
     itemsPerTurn: 8;
     charsPerTurn: 10000;
 }>;
+/** How long a bounded local capture may take before the turn moves on. */
+export declare const DEFAULT_CAPTURE_TIMEOUT_MS = 400;
 /** Days before an evidence file is pruned. Shorter than telemetry on purpose. */
 export declare const DEFAULT_RETENTION_DAYS = 14;
 /**
@@ -56,9 +59,12 @@ export declare function boundExcerpt(text: any, limit?: 2000): {
  *
  * @returns {{captureStatus: "captured"|"skipped", reason?: string, record?: object}}
  */
-export declare function buildEvidenceRecord({ turnId, toolCallId, tool, params, result, now, id, }?: {
+export declare function buildEvidenceRecord({ turnId, toolCallId, tool, params, result, evidenceItem, evidenceView, transformsApplied, now, id, }?: {
+    evidenceItem?: null | undefined;
+    evidenceView?: string | undefined;
     id?: (() => string) | undefined;
     now?: (() => number) | undefined;
+    transformsApplied?: never[] | undefined;
 }): {
     captureStatus: "captured" | "skipped";
     reason?: string;
@@ -72,6 +78,7 @@ export declare function buildEvidenceRecord({ turnId, toolCallId, tool, params, 
  */
 export declare function createTurnBudget(bounds?: Readonly<{
     excerptChars: 2000;
+    itemsPerCall: 5;
     itemsPerTurn: 8;
     charsPerTurn: 10000;
 }>): {
@@ -120,6 +127,35 @@ export declare function pruneEvidenceCapture(dir: any, retentionDays: number | u
  * Returns what telemetry should record: references and outcome flags, never
  * excerpt text.
  */
+/**
+ * Capture every evidence item from one successful tool call.
+ *
+ * Bounded three ways — per item, per call, per turn — and every rejection is
+ * reported rather than silently dropped, because "we captured nothing" and "we
+ * captured nothing because the budget was spent" are different facts about a
+ * turn.
+ */
+export declare function captureToolCallEvidence({ dir, budget, logger, tool, result, runtimeTools, bounds, ...rest }: {
+    [x: string]: any;
+    bounds?: Readonly<{
+        excerptChars: 2000;
+        itemsPerCall: 5;
+        itemsPerTurn: 8;
+        charsPerTurn: 10000;
+    }> | undefined;
+    budget: any;
+    dir: any;
+    logger: any;
+    result: any;
+    runtimeTools?: never[] | undefined;
+    tool: any;
+}): Promise<{
+    evidenceIds: any[];
+    captured: number;
+    skipped: number;
+    failed: number;
+    reasons: any[];
+}>;
 export declare function captureEvidence({ dir, budget, logger, ...input }: {
     [x: string]: any;
     budget: any;

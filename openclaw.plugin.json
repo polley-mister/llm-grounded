@@ -161,6 +161,76 @@
         },
         "description": "Absolute paths to the prompt surfaces hashed into each telemetry record. Contents are never copied into a record. Missing files hash as absent."
       },
+      "evidenceCaptureEnabled": {
+        "type": "boolean",
+        "description": "Capture bounded redacted evidence excerpts. Shadow only: capture never alters a tool result, an answer, or the turn."
+      },
+      "evidenceCaptureDir": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Directory for evidence excerpts. Must differ from evidenceDir, which holds audit packets with different semantics and retention."
+      },
+      "evidenceCaptureRetentionDays": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 365,
+        "description": "Days of evidence excerpts retained. Shorter than telemetry by default: excerpts are verbatim third-party content."
+      },
+      "evidenceCaptureTools": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Tools whose results may be captured. An allowlist; a tool with no adapter is never captured generically."
+      },
+      "evidenceCaptureRuntimeTools": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Runtime or status tools captured with the narrow rendered-text adapter."
+      },
+      "evidenceCaptureTrafficClasses": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "human",
+            "heartbeat",
+            "scheduled_automation",
+            "system",
+            "synthetic_test"
+          ]
+        },
+        "description": "Traffic classes eligible for capture. Heartbeat and scheduled automation are excluded by default."
+      },
+      "evidenceCaptureTimeoutMs": {
+        "type": "integer",
+        "minimum": 50,
+        "maximum": 5000,
+        "description": "Budget for bounded local capture. On timeout the tool result is returned unchanged."
+      },
+      "evidenceCaptureMaxItemsPerCall": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20
+      },
+      "evidenceCaptureMaxItemsPerTurn": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50
+      },
+      "evidenceCaptureMaxCharsPerItem": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 20000
+      },
+      "evidenceCaptureMaxCharsPerTurn": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 100000
+      },
       "trafficClasses": {
         "type": "object",
         "additionalProperties": false,
