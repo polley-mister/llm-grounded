@@ -218,6 +218,42 @@ export function createPlugin(deps = {}) {
   let runtimeSnapshot = { status: "unresolved", reason: "not_yet_registered" };
   let unresolvedReported = false;
 
+  /**
+   * The logger, resolved rather than assumed.
+   *
+   * `pluginLogger` is undefined in production: the default export calls
+   * createPlugin() with no dependencies, so every `pluginLogger?.debug?.()` in
+   * this file — including the overlay's — has been a no-op since it was
+   * written. Two deployments were then diagnosed by reading silence that could
+   * not have contained anything.
+   *
+   * The host's logger is preferred when it offers one; otherwise the process
+   * console, whose output reaches journald under the gateway service. A
+   * diagnostic nobody can read is not a diagnostic.
+   */
+  let runtimeLogger = deps.logger ?? null;
+
+  function log(level, message) {
+    const l = runtimeLogger;
+    if (l && typeof l[level] === "function") {
+      l[level](message);
+      return;
+    }
+    if (level === "error" || level === "warn") console.error(message);
+    else console.log(message);
+  }
+
+  /** For modules that accept a logger parameter, so their failures surface too. */
+  const pluginLogger = {
+    info: (m) => log("info", m),
+    warn: (m) => log("warn", m),
+    error: (m) => log("error", m),
+    debug: (m) => log("debug", m),
+  };
+
+  /** True once the tool-result middleware has been invoked in this process. */
+  let middlewareSeen = false;
+
   /** Resolve from the canonical OpenClaw plugin entry. */
   function resolveRuntimeSnapshot(api) {
     const raw = api?.config?.plugins?.entries?.[PLUGIN_ID]?.config;
@@ -253,7 +289,7 @@ export function createPlugin(deps = {}) {
     // remove: a middleware believing config resolved, silently doing nothing.
     if (!unresolvedReported) {
       unresolvedReported = true;
-      deps.logger?.error?.(
+      log("error",
         "llm-grounded runtime config unavailable; evidence capture and overlays degraded " +
           `(reason=${runtimeSnapshot.reason})`,
       );
@@ -273,7 +309,7 @@ export function createPlugin(deps = {}) {
     if (!overlay) {
       overlay =
         deps.overlayReader ??
-        createOverlayReader({ vaultPath: cfg.vaultPath, logger: deps.logger });
+        createOverlayReader({ vaultPath: cfg.vaultPath, logger: pluginLogger });
     }
     return overlay;
   }
@@ -456,7 +492,7 @@ export function createPlugin(deps = {}) {
           blocked.push({ tool: event?.toolName, reason: safety.reason });
           telemetryBlocked.set(k, blocked);
         }
-        deps.logger?.warn?.(
+        pluginLogger?.warn?.(
           `llmGrounded: blocked ${event?.toolName} (${safety.reason})`,
         );
         return { block: true, blockReason: blockMessage() };
@@ -799,7 +835,7 @@ export function createPlugin(deps = {}) {
         // `before_prompt_build` never ran — which happens when
         // `hooks.allowPromptInjection` is false for this plugin. That is a
         // silent fail-open, so say so rather than letting it pass unnoticed.
-        deps.logger?.warn?.(
+        pluginLogger?.warn?.(
           "llm-grounded: no classification for this turn; " +
             "check plugins.entries.llmGrounded.hooks.allowPromptInjection",
         );
@@ -914,15 +950,26 @@ export function createPlugin(deps = {}) {
    */
   async function captureToolEvidence(cfg, event, ctx, result, transformsApplied) {
     try {
-      if (!cfg?.evidenceCaptureEnabled) return;
+      const key = { runId: ctx?.runId ?? event?.runId, sessionKey: ctx?.sessionKey ?? event?.sessionKey };
+      const skip = (reason) => {
+        // Legitimate skips are recorded too. "Nothing was captured" and
+        // "nothing was captured because the tool is not allowlisted" are
+        // different facts, and only one of them is a problem.
+        store?.noteEvidenceSkip?.(key, reason);
+        log("debug", `llmGrounded: evidence capture skipped tool=${event?.toolName} reason=${reason}`);
+      };
+
+      if (!cfg?.evidenceCaptureEnabled) return skip("capture_disabled");
 
       const tool = event?.toolName;
       const runtimeTools = cfg.evidenceCaptureRuntimeTools ?? [];
-      if (!(cfg.evidenceCaptureTools ?? []).includes(tool) && !runtimeTools.includes(tool)) return;
+      if (!(cfg.evidenceCaptureTools ?? []).includes(tool) && !runtimeTools.includes(tool)) {
+        return skip("tool_not_allowlisted");
+      }
 
       // A truthy result object is not proof of success. Use the same error
       // detection the grounding path uses, so "succeeded" means one thing.
-      if (isErrorResult(result)) return;
+      if (isErrorResult(result)) return skip("tool_not_successful");
 
       const traffic = resolveTrafficClass(
         {
@@ -935,11 +982,12 @@ export function createPlugin(deps = {}) {
       // Heartbeats and scheduled runs are excluded initially: volume without
       // calibration value, since claim support is being characterised on human
       // answers.
-      if (!(cfg.evidenceCaptureTrafficClasses ?? []).includes(traffic.trafficClass)) return;
+      if (!(cfg.evidenceCaptureTrafficClasses ?? []).includes(traffic.trafficClass)) {
+        return skip(`traffic_class_excluded:${traffic.trafficClass}`);
+      }
 
-      const key = { runId: ctx?.runId ?? event?.runId, sessionKey: ctx?.sessionKey ?? event?.sessionKey };
       const budgetKey = key.runId ?? key.sessionKey;
-      if (!budgetKey) return;
+      if (!budgetKey) return skip("no_turn_identity");
       if (!evidenceBudgets.has(budgetKey)) {
         evidenceBudgets.set(budgetKey, createTurnBudget({
           itemsPerCall: cfg.evidenceCaptureMaxItemsPerCall ?? EVIDENCE_BOUNDS.itemsPerCall,
@@ -955,7 +1003,7 @@ export function createPlugin(deps = {}) {
       const capture = captureToolCallEvidence({
         dir: cfg.evidenceCaptureDir,
         budget: evidenceBudgets.get(budgetKey),
-        logger: deps.logger,
+        logger: pluginLogger,
         tool,
         result,
         params: event?.params,
@@ -979,13 +1027,16 @@ export function createPlugin(deps = {}) {
 
       if (outcome?.timedOut) {
         store?.noteEvidenceCapture?.(key, { evidenceIds: [], captured: 0, skipped: 1, failed: 0 });
-        deps.logger?.debug?.(`llmGrounded: evidence capture timed out after ${timeoutMs}ms`);
+        log("warn", `llmGrounded: evidence capture timed out after ${timeoutMs}ms`);
         return;
       }
       store?.noteEvidenceCapture?.(key, outcome);
+      log("debug",
+        `llmGrounded: evidence captured tool=${tool} ids=${outcome.evidenceIds.length} ` +
+          `skipped=${outcome.skipped} failed=${outcome.failed}`);
     } catch (err) {
       // Deliberately swallowed. Nothing about capture is worth failing a turn.
-      deps.logger?.warn?.(`llmGrounded: evidence capture error: ${String(err?.message ?? err)}`);
+      log("warn", `llmGrounded: evidence capture error: ${String(err?.message ?? err)}`);
     }
   }
 
@@ -1159,17 +1210,17 @@ export function createPlugin(deps = {}) {
       latencyMs: meta?.startedAt ? Date.now() - meta.startedAt : null,
       now: Date.now(),
     });
-    await writeTurnRecord(cfg.telemetryDir, record, deps.logger);
-    await pruneTurnRecords(cfg.telemetryDir, cfg.telemetryRetentionDays, deps.logger);
+    await writeTurnRecord(cfg.telemetryDir, record, pluginLogger);
+    await pruneTurnRecords(cfg.telemetryDir, cfg.telemetryRetentionDays, pluginLogger);
     if (cfg.evidenceCaptureEnabled) {
       // Its own retention, shorter than telemetry's: excerpts are verbatim
       // third-party content and should not accumulate indefinitely.
-      await pruneEvidenceCapture(cfg.evidenceCaptureDir, cfg.evidenceCaptureRetentionDays, deps.logger);
+      await pruneEvidenceCapture(cfg.evidenceCaptureDir, cfg.evidenceCaptureRetentionDays, pluginLogger);
     }
     if (cfg.evidenceCaptureEnabled) {
       // Its own retention, shorter than telemetry's: excerpts are verbatim
       // third-party content and should not accumulate indefinitely.
-      await pruneEvidenceCapture(cfg.evidenceCaptureDir, cfg.evidenceCaptureRetentionDays, deps.logger);
+      await pruneEvidenceCapture(cfg.evidenceCaptureDir, cfg.evidenceCaptureRetentionDays, pluginLogger);
     }
     if (k) {
       telemetryFeatures.delete(k);
@@ -1188,7 +1239,7 @@ export function createPlugin(deps = {}) {
       agentId: ctx?.agentId,
       now: now(),
     });
-    await write(cfg.evidenceDir, sessionId, record, deps.logger);
+    await write(cfg.evidenceDir, sessionId, record, pluginLogger);
     await prune(cfg.evidenceDir);
   }
 
@@ -1211,10 +1262,11 @@ export function createPlugin(deps = {}) {
       // One snapshot, resolved once. Configuration changes restart this
       // gateway, so per-call re-resolution would add inconsistency without
       // buying anything.
+      runtimeLogger = deps.logger ?? api?.logger ?? null;
       runtimeSnapshot = resolveRuntimeSnapshot(api);
       if (runtimeSnapshot.status === "resolved") {
         const c = runtimeSnapshot.config;
-        deps.logger?.info?.(
+        log("info",
           "llm-grounded runtime config resolved " +
             `source=${runtimeSnapshot.source} ` +
             `evidenceCaptureEnabled=${Boolean(c.evidenceCaptureEnabled)} ` +
@@ -1225,7 +1277,7 @@ export function createPlugin(deps = {}) {
       } else {
         // High severity and once per process. This is the diagnostic whose
         // absence made the previous failure cost an hour of probing.
-        deps.logger?.error?.(
+        log("error",
           "llm-grounded runtime config unavailable; evidence capture and overlays degraded " +
             `reason=${runtimeSnapshot.reason}` +
             (runtimeSnapshot.detail ? ` detail=${runtimeSnapshot.detail}` : ""),
@@ -1300,6 +1352,16 @@ export function createPlugin(deps = {}) {
       // Promise outright. Agent tool-result middleware is the seam that does.
       api.registerAgentToolResultMiddleware?.(
         async (event, ctx) => {
+          if (!middlewareSeen) {
+            middlewareSeen = true;
+            // One line, once per process. It answers the question that took an
+            // hour to answer by inference: is this seam invoked at all?
+            log("info",
+              `llm-grounded tool-result middleware invoked (first call) tool=${event?.toolName} ` +
+                `hasSessionKey=${Boolean(ctx?.sessionKey ?? event?.sessionKey)} ` +
+                `hasRunId=${Boolean(ctx?.runId ?? event?.runId)} ` +
+                `agentId=${ctx?.agentId ?? "none"}`);
+          }
           const snapshot = middlewareSnapshot();
           const sessionKey = ctx?.sessionKey ?? event?.sessionKey ?? null;
           const key = {
@@ -1346,7 +1408,7 @@ export function createPlugin(deps = {}) {
                   transformsApplied.push("session_fact_overlay");
                 }
                 store?.noteOverlayApplied?.(key);
-                deps.logger?.debug?.(
+                log("debug", 
                   `llmGrounded: overlaid ${applied.conflicts.length} authoritative fact(s) on ${event.toolName}`,
                 );
               }
@@ -1394,7 +1456,7 @@ export function createPlugin(deps = {}) {
             cfg,
             store: s,
             ctx: toolCtx,
-            logger: deps.logger,
+            logger: pluginLogger,
             deps: {
               ...deps.factDeps,
               llm: deps.factDeps?.llm ?? api?.runtime?.llm,

@@ -146,6 +146,11 @@ export function createGroundingStore(opts?: {
         runId: any;
         sessionKey: any;
     }): GroundingEntry;
+    /** Record why evidence capture did not run for this tool call. */
+    noteEvidenceSkip({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }, reason: any): GroundingEntry;
     noteEvidenceCapture({ runId, sessionKey }: {
         runId: any;
         sessionKey: any;

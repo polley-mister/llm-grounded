@@ -447,6 +447,16 @@ export function createGroundingStore(opts = {}) {
       return entry;
     },
 
+    /** Record why evidence capture did not run for this tool call. */
+    noteEvidenceSkip({ runId, sessionKey }, reason) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry) return null;
+      // First reason wins: the earliest gate is the actionable one.
+      entry.evidenceCaptureSkipReason ??= reason;
+      entry.updatedAt = now();
+      return entry;
+    },
+
     noteEvidenceCapture({ runId, sessionKey }, outcome) {
       const entry = this.get({ runId, sessionKey });
       if (!entry || !outcome) return null;
