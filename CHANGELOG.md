@@ -3,6 +3,76 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.2.6
+
+Correctness, behaviour-neutral: one turn, one identity, one place to keep its
+state. Emitted telemetry is unchanged — a full turn driven through this build
+and through 0.2.5 produces a byte-identical record, apart from one added field.
+
+The host describes a turn differently at every hook. `before_prompt_build` gets
+a run id, a session key and a session id; the delivery hooks get no run id; the
+agent-tool-result middleware gets nothing and reaches its turn only through a
+tool call id bound earlier. Each consumer derived its own key from whatever it
+had, and two derivations were live at once:
+
+```
+the state store      runId ? `run:${runId}` : `session:${sessionKey}`
+the telemetry maps   runId ?? sessionKey
+```
+
+Different strings for one turn. A hook holding only a session key wrote where
+the reader was not looking, and no session id was indexed anywhere, so a hook
+holding only that found nothing at all. This is the same shape as the traffic
+defect fixed in 0.2.5 — several derivations of one fact — and it would deepen
+with every field a turn gains, which is why it is done before claim extraction
+adds more per-turn state.
+
+### Added
+
+- `src/turn-identity.js`. An internal turn id, minted once, with an alias index
+  from every host field the turn was seen under. The id is deliberately not
+  derived from any host field, so nothing can reconstruct it instead of
+  resolving it. A supplied-but-unknown run id still resolves to nothing rather
+  than to the session's current turn — the invariant that keeps one run's
+  fail-closed latch away from another run in the same session.
+- `internalTurnId` on the turn record, alongside `turnId` rather than instead of
+  it. `turnId` remains the host-derived correlation key that evidence files
+  already reference.
+- `tests/turn-state.test.mjs`, which hands each hook a deliberately different
+  subset of the identity — full, run-only, session-key-only, session-id-only,
+  and a middleware with nothing but a bound tool call — and asserts they all
+  reach one entry and one record.
+
+### Changed
+
+- Every hook resolves through one helper instead of assembling its own key.
+  There were thirteen hand-written variants, each individually defensible:
+  `ctx?.sessionKey` here, `event?.sessionKey ?? ctx?.sessionKey` there, and no
+  session id anywhere.
+- Store methods take the turn reference whole rather than a two-field subset,
+  which silently discarded any third field a caller had.
+- The five telemetry side maps — matched features, drafts, tool calls, policy,
+  blocked calls — move onto the turn entry. They had no bound of their own and
+  were cleared only on the `agent_end` path, so a turn that never reached
+  `agent_end` leaked its drafts and matched features for the life of the
+  process. They are now released, expired and bounded with the turn.
+- `correctionScope` is stored once, on the entry, instead of also being copied
+  into the policy snapshot beside it.
+
+### Fixed
+
+- The write-failure branch of evidence capture was covered by two tests that
+  made a directory unwritable with `chmod 0500`, which does nothing when the
+  test process is root: the write succeeded and both assertions passed for the
+  wrong reason. `writeEvidenceRecord` now takes its filesystem calls as an
+  injectable parameter and three tests inject `EACCES` directly. The
+  permission-based tests are kept for the real syscalls and skipped under root.
+
+### Removed
+
+- `hardTriggerKind`, which has had no callers since the obligation moved inline
+  at the advisory split.
+
 ## 0.2.5
 
 Repair: one traffic classification per turn.
