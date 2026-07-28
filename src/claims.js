@@ -92,7 +92,11 @@ const MAX_CLAIMS = 24;
 const MAX_CLAIM_CHARS = 400;
 const MAX_DRAFT_CHARS = 12000;
 const DEFAULT_TIMEOUT_MS = 20000;
-const DEFAULT_MAX_TOKENS = 1500;
+// Sized for a reasoning model, not for the answer. A model that thinks before
+// it writes spends this budget first, and a limit sized for the JSON alone
+// returns empty content — which arrives as malformed_output and reads as a
+// prompt failure. Observed: 19 of 92 dev turns abstained this way.
+const DEFAULT_MAX_TOKENS = 16000;
 
 // ---------------------------------------------------------------------------
 // Deterministic preprocessing — segmentation and redaction only
@@ -412,6 +416,14 @@ const SYSTEM = [
   "  \"Good one.\"  \"Goodnight.\"  \"That was a terrible joke.\"  \"Later.\"",
   "  \"I couldn\u2019t confirm a current price, so I won\u2019t quote one.\"",
   "The last one asserts uncertainty, NOT the missing price. Do not extract the price.",
+  "",
+  "A short reply that PERFORMS a social act is not a report about the system:",
+  "  turn \"Forget I asked.\"    draft \"Forgotten.\"              -> no claims; it drops the request",
+  "  turn \"You are in a mood.\" draft \"Diagnostic, not moody.\"  -> no claims; banter",
+  "  turn \"You there?\"        draft \"Here.\"                   -> no claims; presence, not status",
+  "Only emit system_or_runtime_state when the operator asked about the system, a",
+  "service, a file, a setting or a process. Ask: is the operator being told a",
+  "checkable fact, or simply being answered?",
   "",
   "== FIELDS ==",
   "  surfaceText       exact text from the draft",
