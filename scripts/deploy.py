@@ -156,6 +156,22 @@ def inspect_runtime():
         return None
 
 
+def user_env():
+    """
+    An environment in which `systemctl --user` and `journalctl --user` work.
+
+    Both need a session bus, and under `su -` there is none. Supplied here in
+    one place because fixing it for one of the two and not the other is exactly
+    what happened the first time: the service check was corrected, the journal
+    check was not, and the next deployment failed on the half that was missed.
+    """
+    env = dict(os.environ)
+    uid = os.getuid()
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
+    env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
+    return env
+
+
 def gateway_state():
     """
     'active', 'inactive', or 'unknown'.
@@ -170,12 +186,10 @@ def gateway_state():
     environment where it still cannot be reached reports 'unknown', and the
     caller falls back to what the host itself says it loaded.
     """
-    env = dict(os.environ)
-    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
     try:
         result = subprocess.run(
             ["systemctl", "--user", "is-active", "openclaw-gateway.service"],
-            capture_output=True, text=True, env=env,
+            capture_output=True, text=True, env=user_env(),
         )
     except OSError:
         return "unknown"
@@ -191,13 +205,29 @@ def gateway_state():
     return "unknown"
 
 
-def epoch_resolved(epoch, since):
-    """The plugin's own startup line, which is the only proof config resolved."""
-    result = subprocess.run(
-        ["journalctl", "--user", "-u", "openclaw-gateway.service", "--since", since, "--no-pager"],
-        capture_output=True, text=True,
-    )
-    return f"behaviorEpoch={epoch}" in result.stdout
+def epoch_state(epoch, since):
+    """
+    'confirmed', 'absent', or 'unknown'.
+
+    The plugin's own startup line is the only direct evidence that it read the
+    config we wrote rather than a cached one. Three-valued for the same reason
+    the service check is: a journal that cannot be read is not a journal that
+    says no.
+    """
+    try:
+        result = subprocess.run(
+            ["journalctl", "--user", "-u", "openclaw-gateway.service", "--since", since, "--no-pager"],
+            capture_output=True, text=True, env=user_env(),
+        )
+    except OSError:
+        return "unknown"
+    if result.returncode != 0:
+        return "unknown"
+    if f"behaviorEpoch={epoch}" in result.stdout:
+        return "confirmed"
+    # The journal is readable and the line is not there yet. That may simply be
+    # timing, so the caller keeps waiting rather than failing here.
+    return "absent"
 
 
 def verify(artifact, version, epoch, since, timeout):
@@ -211,6 +241,7 @@ def verify(artifact, version, epoch, since, timeout):
     deadline = time.time() + timeout
     last = "the gateway never reported the new artifact"
     warned_unknown = False
+    warned_journal = False
     while time.time() < deadline:
         time.sleep(3)
         state = gateway_state()
@@ -238,9 +269,20 @@ def verify(artifact, version, epoch, since, timeout):
             return False, "plugin loaded but was not activated"
         if plugin.get("version") != version:
             return False, f"plugin reports version {plugin.get('version')}, expected {version}"
-        if not epoch_resolved(epoch, since):
-            return False, f"no startup line reporting behaviorEpoch={epoch}"
-        return True, f"{PLUGIN_ID} {version} loaded from {artifact}"
+
+        state = epoch_state(epoch, since)
+        if state == "absent":
+            # The right artifact and version are loaded; only the epoch line has
+            # not appeared. Keep waiting — the plugin logs it during startup and
+            # the host may not have flushed it yet.
+            last = f"loaded {version}, but no startup line reporting behaviorEpoch={epoch} yet"
+            continue
+        if state == "unknown" and not warned_journal:
+            log("note: the journal could not be read; the epoch line cannot be confirmed")
+            warned_journal = True
+        return True, f"{PLUGIN_ID} {version} loaded from {artifact}" + (
+            "" if state == "confirmed" else " (epoch unconfirmed: journal unreadable)"
+        )
     return False, last
 
 

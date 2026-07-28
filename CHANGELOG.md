@@ -17,7 +17,11 @@ asked about.
 
 ### Fixed
 
-- Service state is three-valued. `XDG_RUNTIME_DIR` is supplied when absent so
+- Both the service check and the journal check now run in an environment where
+  they work. The first fix corrected the service check and not the journal one,
+  so the next deployment failed on the half that was missed; the environment is
+  now built in one place for both.
+- Service state is three-valued, and so is the epoch check. `XDG_RUNTIME_DIR` is supplied when absent so
   the ordinary case simply works; `inactive` and `failed` are verdicts; a bus
   error or anything unrecognised is `unknown`, noted once and falling through to
   the host's own report of what it loaded, which is the stronger signal anyway.
