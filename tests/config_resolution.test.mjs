@@ -231,3 +231,78 @@ test("direct and production-shaped registration resolve equivalent configuration
   await rm(d, { recursive: true, force: true });
   await rm(d2, { recursive: true, force: true });
 });
+
+// ---------------------------------------------------------------------------
+// Turn identity on the middleware seam
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: the middleware receives no turn identity and still captures", async () => {
+  // Measured in production, not assumed: the tool-result context arrives with
+  // hasSessionKey=false, hasRunId=false, agentId=none. Traffic classification
+  // therefore fell to the default class, which is not allowlisted, and the
+  // budget key was null — so capture skipped every call for want of identity.
+  //
+  // before_tool_call is the one hook that sees a tool call id together with a
+  // run id, which is why the fact transaction already binds there. Capture now
+  // uses the same binding.
+  const d = await dir();
+  const log = recorder();
+  const p = plugin(log);
+  const cfg = captureConfig(d);
+  const mw = registerProductionShaped(p, cfg, log);
+
+  const ctx = { runId: "run-1", sessionKey: "smoke-1", sessionId: "smoke-1", agentId: "chat", pluginConfig: cfg };
+  await p.handlers.before_prompt_build(
+    { prompt: "[user-message:a]\nwhat is the price\n[/user-message:a]", messages: [] }, ctx,
+  );
+  // The hook that carries identity.
+  p.handlers.before_tool_call({ toolName: "web_search", toolCallId: "call-1", params: { query: "price" } }, ctx);
+
+  // The middleware, exactly as production delivers it: no identity at all.
+  const bare = {};
+  const out = await mw(
+    { toolName: "web_search", toolCallId: "call-1", params: { query: "price" }, result: SEARCH },
+    bare,
+  );
+
+  assert.equal(out, undefined, "the tool result is untouched");
+  assert.equal((await files(d)).length, 1, "capture resolved the turn from the binding");
+
+  const entry = p.__store.get({ runId: "run-1" });
+  assert.equal(entry.evidenceCapturedCount, 1);
+  assert.equal(entry.evidenceIds.length, 1);
+  await rm(d, { recursive: true, force: true });
+});
+
+test("an unbound tool call still skips, and says why", async () => {
+  // No binding and no context is genuinely unattributable. It must skip
+  // visibly rather than capture under a guessed identity.
+  const d = await dir();
+  const log = recorder();
+  const p = plugin(log);
+  const mw = registerProductionShaped(p, captureConfig(d), log);
+  await mw({ toolName: "web_search", toolCallId: "never-bound", result: SEARCH }, {});
+  assert.deepEqual(await files(d), []);
+  assert.match(log.lines.debug.join(" "), /reason=(no_turn_identity|traffic_class_excluded)/);
+  await rm(d, { recursive: true, force: true });
+});
+
+test("the binding is peeked, not consumed", async () => {
+  // resolveToolCall is single-use so a replayed id cannot reach a live turn
+  // twice; the fact transaction depends on that. Capture must not spend it.
+  const d = await dir();
+  const p = plugin(recorder());
+  const cfg = captureConfig(d);
+  const mw = registerProductionShaped(p, cfg, recorder());
+  const ctx = { runId: "run-1", sessionKey: "smoke-1", sessionId: "smoke-1", agentId: "chat", pluginConfig: cfg };
+
+  await p.handlers.before_prompt_build(
+    { prompt: "[user-message:a]\nx\n[/user-message:a]", messages: [] }, ctx,
+  );
+  p.handlers.before_tool_call({ toolName: "web_search", toolCallId: "call-1" }, ctx);
+
+  await mw({ toolName: "web_search", toolCallId: "call-1", result: SEARCH }, {});
+  // Still resolvable afterwards, for the path that legitimately consumes it.
+  assert.ok(p.__store.resolveToolCall("call-1"), "capture must not consume the binding");
+  await rm(d, { recursive: true, force: true });
+});

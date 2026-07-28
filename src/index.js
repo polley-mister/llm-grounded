@@ -484,6 +484,20 @@ export function createPlugin(deps = {}) {
       // Safety before routing. Independent of policy mode and unaffected by
       // the classifier becoming advisory: whether a tool is compelled and
       // whether a particular query may run are different questions.
+      // Bind this call to its turn. The tool-result middleware receives no
+      // session key, run id or agent id — measured, not assumed — so without a
+      // binding made here it cannot tell which turn a result belongs to, and
+      // evidence capture silently skipped every call for want of identity.
+      // before_tool_call is the one hook that sees a tool call id together with
+      // a run id, which is why the fact transaction already binds here.
+      if (event?.toolCallId) {
+        store.bindToolCall({
+          toolCallId: event.toolCallId,
+          runId: ctx?.runId ?? event?.runId,
+          sessionKey: ctx?.sessionKey ?? event?.sessionKey,
+        });
+      }
+
       const safety = assessToolSafety(event?.toolName, event?.params);
       if (safety.blocked) {
         const k = telemetryKey(ctx, event);
@@ -950,7 +964,14 @@ export function createPlugin(deps = {}) {
    */
   async function captureToolEvidence(cfg, event, ctx, result, transformsApplied) {
     try {
-      const key = { runId: ctx?.runId ?? event?.runId, sessionKey: ctx?.sessionKey ?? event?.sessionKey };
+      // Prefer the context when the host provides one; fall back to the
+      // binding made at before_tool_call, which is the only identity available
+      // on this seam in practice.
+      const bound = store?.peekToolCall?.(event?.toolCallId) ?? null;
+      const key = {
+        runId: ctx?.runId ?? event?.runId ?? bound?.runId,
+        sessionKey: ctx?.sessionKey ?? event?.sessionKey ?? bound?.sessionKey,
+      };
       const skip = (reason) => {
         // Legitimate skips are recorded too. "Nothing was captured" and
         // "nothing was captured because the tool is not allowlisted" are
@@ -971,11 +992,15 @@ export function createPlugin(deps = {}) {
       // detection the grounding path uses, so "succeeded" means one thing.
       if (isErrorResult(result)) return skip("tool_not_successful");
 
+      const entry = store?.get?.(key) ?? null;
       const traffic = resolveTrafficClass(
         {
-          sessionId: event?.sessionId ?? ctx?.sessionId,
-          sessionKey: ctx?.sessionKey ?? event?.sessionKey,
-          agentId: ctx?.agentId,
+          // The turn's own recorded identity is authoritative here: the
+          // middleware context carries none, so classifying from it alone put
+          // every captured turn in the default class.
+          sessionId: event?.sessionId ?? ctx?.sessionId ?? entry?.sessionKey ?? key.sessionKey,
+          sessionKey: ctx?.sessionKey ?? event?.sessionKey ?? key.sessionKey,
+          agentId: ctx?.agentId ?? entry?.agentId,
         },
         cfg.trafficClasses,
       );
@@ -1363,10 +1388,11 @@ export function createPlugin(deps = {}) {
                 `agentId=${ctx?.agentId ?? "none"}`);
           }
           const snapshot = middlewareSnapshot();
-          const sessionKey = ctx?.sessionKey ?? event?.sessionKey ?? null;
+          const boundCall = store?.peekToolCall?.(event?.toolCallId) ?? null;
+          const sessionKey = ctx?.sessionKey ?? event?.sessionKey ?? boundCall?.sessionKey ?? null;
           const key = {
-            runId: ctx?.runId ?? event?.runId,
-            sessionKey: ctx?.sessionKey ?? event?.sessionKey,
+            runId: ctx?.runId ?? event?.runId ?? boundCall?.runId,
+            sessionKey: ctx?.sessionKey ?? event?.sessionKey ?? boundCall?.sessionKey,
           };
 
           if (snapshot.status !== "resolved") {

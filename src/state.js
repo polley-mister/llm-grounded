@@ -344,6 +344,23 @@ export function createGroundingStore(opts = {}) {
       return { runId: entry.runId, sessionKey: entry.sessionKey };
     },
 
+    /**
+     * Look up a bound tool call without consuming the binding.
+     *
+     * `resolveToolCall` is single-use so a replayed id cannot reach a live turn
+     * twice, which is right for the fact transaction. Evidence capture needs
+     * the same turn identity but must not spend the binding the fact path
+     * depends on, so it peeks.
+     */
+    peekToolCall(toolCallId) {
+      if (!toolCallId) return null;
+      const hit = pendingCalls.get(toolCallId);
+      if (!hit) return null;
+      const entry = entries.get(hit.key);
+      if (!entry) return null;
+      return { runId: entry.runId, sessionKey: entry.sessionKey };
+    },
+
     /** Count one evidence-backed fact transaction attempt for this turn. */
     noteFactCall({ runId, sessionKey }) {
       const entry = this.get({ runId, sessionKey });
