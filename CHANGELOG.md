@@ -3,6 +3,28 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.3.3
+
+Repair. The 0.3.2 deployment gate rejected its own first deployment.
+
+`systemctl --user` needs a session bus, and under `su -` there is none, so the
+service check failed outright and the gate read that as the gateway not running.
+It waited out the full timeout, restored 0.3.1, and reported a failure that had
+not happened. The rollback worked correctly and the gateway stayed healthy
+throughout — the right direction to fail in, and still useless: a gate that
+treats an unreadable signal as a negative one rejects every deployment it is
+asked about.
+
+### Fixed
+
+- Service state is three-valued. `XDG_RUNTIME_DIR` is supplied when absent so
+  the ordinary case simply works; `inactive` and `failed` are verdicts; a bus
+  error or anything unrecognised is `unknown`, noted once and falling through to
+  the host's own report of what it loaded, which is the stronger signal anyway.
+
+The `v0.3.2` tag is kept and still points at the artifact the gate rejected. It
+was never deployed, and the fault was in the gate rather than in that build.
+
 ## 0.3.2
 
 Operational measurement. No change to extraction behaviour, no enforcement, no
