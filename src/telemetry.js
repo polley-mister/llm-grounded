@@ -192,6 +192,10 @@ export function resetBuildInfo() {
  * would hide systematic truncation behind an apparent success.
  */
 function evidenceCaptureStatus(entry) {
+  // A build that could not read its own configuration did not decline to
+  // capture; it was unable to. Reporting that as not_applicable would make a
+  // fault look like a legitimate choice, which is exactly what happened.
+  if (entry?.runtimeConfigResolved === false) return "unavailable";
   if (!entry?.evidenceCaptureAttempted) return "not_applicable";
   const captured = entry.evidenceCapturedCount ?? 0;
   const lost = (entry.evidenceCaptureSkippedCount ?? 0) + (entry.evidenceCaptureFailedCount ?? 0);
@@ -280,6 +284,12 @@ export function buildTurnRecord(entry, extra = {}) {
     evidenceCaptureSkippedCount: entry?.evidenceCaptureSkippedCount ?? 0,
     evidenceCaptureFailedCount: entry?.evidenceCaptureFailedCount ?? 0,
     evidenceCaptureStatus: evidenceCaptureStatus(entry),
+    evidenceCaptureSkipReason: entry?.evidenceCaptureSkipReason ?? null,
+    runtimeConfigResolved: entry?.runtimeConfigResolved !== false,
+    runtimeConfigReason: entry?.runtimeConfigReason ?? null,
+    overlayConfigResolved: entry?.overlayConfigResolved !== false,
+    overlayApplied: Boolean(entry?.overlayApplied),
+    overlaySkipReason: entry?.overlaySkipReason ?? null,
     // A captured excerpt says nothing about whether any claim holds. Kept
     // explicitly null so no consumer infers support from capture success.
     claimSupported: null,

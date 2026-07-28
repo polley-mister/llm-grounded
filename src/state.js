@@ -236,6 +236,14 @@ export function createGroundingStore(opts = {}) {
         evidenceCapturedCount: 0,
         evidenceCaptureSkippedCount: 0,
         evidenceCaptureFailedCount: 0,
+        evidenceCaptureSkipReason: null,
+        // Whether the plugin could resolve its own configuration at all.
+        // Distinct from "the feature is off": one is a fault, the other is a
+        // choice, and reporting them the same way hides the fault.
+        runtimeConfigResolved: true,
+        overlayConfigResolved: true,
+        overlayApplied: false,
+        overlaySkipReason: null,
         createdAt: ts,
         updatedAt: ts,
       };
@@ -410,6 +418,35 @@ export function createGroundingStore(opts = {}) {
      * and a bookkeeping failure must not be able to change what the operator
      * receives.
      */
+    /**
+     * Record that the plugin could not resolve its configuration.
+     *
+     * Never alters the turn. It marks the record so a corpus reader can tell a
+     * degraded build from one that legitimately had nothing to capture.
+     */
+    noteRuntimeConfigUnresolved({ runId, sessionKey }, reason) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry) return null;
+      entry.runtimeConfigResolved = false;
+      entry.overlayConfigResolved = false;
+      // The category the corpus is queried by, and the specific cause. One
+      // without the other is either unusable or unactionable.
+      entry.evidenceCaptureSkipReason = "config_unresolved";
+      entry.overlaySkipReason = "config_unresolved";
+      entry.runtimeConfigReason = reason ?? "unknown";
+      entry.updatedAt = now();
+      return entry;
+    },
+
+    /** Note that the fact overlay actually rewrote a retrieval. */
+    noteOverlayApplied({ runId, sessionKey }) {
+      const entry = this.get({ runId, sessionKey });
+      if (!entry) return null;
+      entry.overlayApplied = true;
+      entry.updatedAt = now();
+      return entry;
+    },
+
     noteEvidenceCapture({ runId, sessionKey }, outcome) {
       const entry = this.get({ runId, sessionKey });
       if (!entry || !outcome) return null;

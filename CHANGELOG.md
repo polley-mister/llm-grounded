@@ -3,6 +3,35 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.2.1
+
+Repair: runtime configuration resolution.
+
+0.2.0 shipped evidence capture that never activated in production. The
+middleware could not resolve configuration in its context, fell back to package
+defaults — in which every optional feature is off — and returned silently.
+Telemetry reported `not_applicable`, which is indistinguishable from capture
+running and finding nothing. The fact overlay shared the same defect and would
+have been equally inert.
+
+### Fixed
+
+- Configuration resolves once, at registration, from the canonical plugin
+  entry, and is stored as an immutable snapshot that both middlewares share.
+- `unresolved` is now a distinct state from `disabled`. Absence of the entire
+  configuration source can no longer become default-disabled; only individual
+  optional keys default.
+- A high-severity diagnostic is emitted once per process when configuration
+  cannot be resolved, and a neutral one naming the source and settings when it
+  can. The absence of that line is what made the original failure invisible.
+- Telemetry distinguishes `unavailable` from `not_applicable` and records both
+  the category and the specific cause.
+
+### Note
+
+Turns recorded under 0.2.0 with `evidenceCaptureStatus: not_applicable` are
+accurate for that build: capture genuinely did not run. They are not rewritten.
+
 ## 0.2.0
 
 Evidence capture, shadow only.

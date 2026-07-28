@@ -199,8 +199,66 @@ export function createPlugin(deps = {}) {
    * then defaults — and defaults leave `factsEnabled` false, so a config we
    * cannot resolve closes the overlay rather than opening it.
    */
-  function middlewareConfig(api) {
-    return lastCfg ?? resolveToolConfig({ runtimeConfig: api?.config }, null);
+  /**
+   * The resolved runtime configuration, or an explanation of why there isn't one.
+   *
+   * Three states, and the third is the whole point:
+   *
+   *   resolved    a real plugin entry was found, parsed and validated
+   *   unresolved  no configuration source could be located at all
+   *
+   * `unresolved` must never become "disabled". The previous version collapsed
+   * them: a middleware that could not find config fell back to package
+   * defaults, in which every optional feature is off, and then returned
+   * silently. In production that made evidence capture inert and indented
+   * nothing in any log — indistinguishable from capture running and finding
+   * nothing. Optional *keys* may default; absence of the entire configuration
+   * source may not.
+   */
+  let runtimeSnapshot = { status: "unresolved", reason: "not_yet_registered" };
+  let unresolvedReported = false;
+
+  /** Resolve from the canonical OpenClaw plugin entry. */
+  function resolveRuntimeSnapshot(api) {
+    const raw = api?.config?.plugins?.entries?.[PLUGIN_ID]?.config;
+    if (raw === undefined || raw === null) {
+      return { status: "unresolved", reason: "plugin_config_unavailable" };
+    }
+    const parsed = parseConfig(raw);
+    if (!parsed.success) {
+      // A malformed entry stays a parse failure. Silently becoming "disabled"
+      // is how a typo turns into a feature that never runs.
+      return {
+        status: "unresolved",
+        reason: "plugin_config_invalid",
+        detail: parsed.error?.issues?.[0]?.message ?? "invalid",
+      };
+    }
+    return { status: "resolved", source: "openclaw-plugin-entry", config: parsed.data };
+  }
+
+  /**
+   * The snapshot the middlewares use.
+   *
+   * Prefers the registration-time snapshot. `lastCfg` is accepted only as a
+   * cache of a configuration that already resolved successfully through a hook
+   * context — never as a way to manufacture one.
+   */
+  function middlewareSnapshot() {
+    if (runtimeSnapshot.status === "resolved") return runtimeSnapshot;
+    // Deliberately no fallback to lastCfg. hookConfig sets it from whatever a
+    // hook context offered, and when that context carries nothing it resolves
+    // to package defaults — in which every optional feature is off. Accepting
+    // that here would reintroduce the exact defect this function exists to
+    // remove: a middleware believing config resolved, silently doing nothing.
+    if (!unresolvedReported) {
+      unresolvedReported = true;
+      deps.logger?.error?.(
+        "llm-grounded runtime config unavailable; evidence capture and overlays degraded " +
+          `(reason=${runtimeSnapshot.reason})`,
+      );
+    }
+    return runtimeSnapshot;
   }
 
   /**
@@ -1108,6 +1166,11 @@ export function createPlugin(deps = {}) {
       // third-party content and should not accumulate indefinitely.
       await pruneEvidenceCapture(cfg.evidenceCaptureDir, cfg.evidenceCaptureRetentionDays, deps.logger);
     }
+    if (cfg.evidenceCaptureEnabled) {
+      // Its own retention, shorter than telemetry's: excerpts are verbatim
+      // third-party content and should not accumulate indefinitely.
+      await pruneEvidenceCapture(cfg.evidenceCaptureDir, cfg.evidenceCaptureRetentionDays, deps.logger);
+    }
     if (k) {
       telemetryFeatures.delete(k);
       telemetryDrafts.delete(k);
@@ -1145,6 +1208,31 @@ export function createPlugin(deps = {}) {
     configSchema,
     handlers,
     register(api) {
+      // One snapshot, resolved once. Configuration changes restart this
+      // gateway, so per-call re-resolution would add inconsistency without
+      // buying anything.
+      runtimeSnapshot = resolveRuntimeSnapshot(api);
+      if (runtimeSnapshot.status === "resolved") {
+        const c = runtimeSnapshot.config;
+        deps.logger?.info?.(
+          "llm-grounded runtime config resolved " +
+            `source=${runtimeSnapshot.source} ` +
+            `evidenceCaptureEnabled=${Boolean(c.evidenceCaptureEnabled)} ` +
+            `behaviorEpoch=${c.behaviorEpoch} ` +
+            `telemetryDir=${c.telemetryDir} ` +
+            `evidenceCaptureDir=${c.evidenceCaptureDir}`,
+        );
+      } else {
+        // High severity and once per process. This is the diagnostic whose
+        // absence made the previous failure cost an hour of probing.
+        deps.logger?.error?.(
+          "llm-grounded runtime config unavailable; evidence capture and overlays degraded " +
+            `reason=${runtimeSnapshot.reason}` +
+            (runtimeSnapshot.detail ? ` detail=${runtimeSnapshot.detail}` : ""),
+        );
+        unresolvedReported = true;
+      }
+
       readRuntimeConfig = () => {
         try {
           return api.runtime?.config?.current?.() ?? api.config;
@@ -1212,8 +1300,21 @@ export function createPlugin(deps = {}) {
       // Promise outright. Agent tool-result middleware is the seam that does.
       api.registerAgentToolResultMiddleware?.(
         async (event, ctx) => {
-          const cfg = middlewareConfig(api);
+          const snapshot = middlewareSnapshot();
           const sessionKey = ctx?.sessionKey ?? event?.sessionKey ?? null;
+          const key = {
+            runId: ctx?.runId ?? event?.runId,
+            sessionKey: ctx?.sessionKey ?? event?.sessionKey,
+          };
+
+          if (snapshot.status !== "resolved") {
+            // Both middlewares degrade together and both say so. Leaving one
+            // silently disabled while repairing the other is how this defect
+            // survived a deployment.
+            store?.noteRuntimeConfigUnresolved?.(key, snapshot.reason);
+            return undefined;
+          }
+          const cfg = snapshot.config;
 
           // The effective result: what the model will actually read. Starts as
           // what the tool returned and is replaced only by a trusted overlay.
@@ -1244,6 +1345,7 @@ export function createPlugin(deps = {}) {
                 if (sessionKey && sessionOverlay.active(sessionKey)) {
                   transformsApplied.push("session_fact_overlay");
                 }
+                store?.noteOverlayApplied?.(key);
                 deps.logger?.debug?.(
                   `llmGrounded: overlaid ${applied.conflicts.length} authoritative fact(s) on ${event.toolName}`,
                 );

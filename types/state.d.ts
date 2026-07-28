@@ -131,6 +131,21 @@ export function createGroundingStore(opts?: {
      * and a bookkeeping failure must not be able to change what the operator
      * receives.
      */
+    /**
+     * Record that the plugin could not resolve its configuration.
+     *
+     * Never alters the turn. It marks the record so a corpus reader can tell a
+     * degraded build from one that legitimately had nothing to capture.
+     */
+    noteRuntimeConfigUnresolved({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }, reason: any): GroundingEntry;
+    /** Note that the fact overlay actually rewrote a retrieval. */
+    noteOverlayApplied({ runId, sessionKey }: {
+        runId: any;
+        sessionKey: any;
+    }): GroundingEntry;
     noteEvidenceCapture({ runId, sessionKey }: {
         runId: any;
         sessionKey: any;
