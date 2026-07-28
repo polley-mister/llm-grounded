@@ -500,6 +500,7 @@ export async function extractClaims(input = {}, opts = {}) {
   opts.signal?.addEventListener?.("abort", () => controller?.abort(), { once: true });
 
   let result;
+  const startedAt = Date.now();
   try {
     result = await llm.complete({
       purpose: "claim-extraction",
@@ -522,12 +523,18 @@ export async function extractClaims(input = {}, opts = {}) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+  if (result && result.latencyMs == null) result.latencyMs = Date.now() - startedAt;
 
   const provenance = {
     provider: result?.provider ?? null,
     model: result?.model ?? null,
     schemaVersion: SCHEMA_VERSION,
     promptVersion: PROMPT_VERSION,
+    // Token counts confirm whether the budget is headroom or regularly spent,
+    // which is the difference between "16000 is ample" and "16000 is the next
+    // silent truncation".
+    usage: result?.usage ?? null,
+    latencyMs: result?.latencyMs ?? null,
   };
 
   const parsed = parseExtraction(result?.text, { draft, spans });

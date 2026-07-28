@@ -148,6 +148,8 @@ export declare function extractClaims(input?: {
         model: any;
         schemaVersion: string;
         promptVersion: string;
+        usage: any;
+        latencyMs: any;
     };
     claims: {
         surfaceText: any;

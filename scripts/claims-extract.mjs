@@ -43,6 +43,7 @@ function parseArgs(argv) {
     else if (a === "--split") out.split = next();
     else if (a === "--limit") out.limit = Number(next()) || Infinity;
     else if (a === "--rescore") out.rescore = next();
+    else if (a === "--run-id") out.runId = next();
     else if (a === "--dry-run") out.dryRun = true;
     else if (a === "--help" || a === "-h") out.help = true;
   }
@@ -59,6 +60,7 @@ claims:extract — offline claim extraction over a corpus or historical telemetr
   --split <dev|validation|test>   restrict to one split
   --limit <n>               cap records processed
   --rescore <file.jsonl>    re-score a previous run offline; calls no model
+  --run-id <id>             label records, for repetition studies
   --dry-run                 do not write output
 `;
 
@@ -171,6 +173,7 @@ function score(records) {
     byStatus: {},
     abstentionReasons: {},
     labelled: 0,
+    labelledTurns: 0,
     // Turns whose extraction abstained. Excluded from recall denominators: an
     // abstention is a different failure from a miss, and mixing them means a
     // provider hiccup reads as a recall problem and neither can be fixed on
@@ -191,7 +194,7 @@ function score(records) {
     composite: { turns: 0, decomposed: 0 },
     // Bare answers are the elliptical case: the proposition lives partly in the
     // operator's turn, so recall here measures reconstruction, not detection.
-    bareAnswer: { gold: 0, found: 0 },
+    bareAnswer: { gold: 0, found: 0, endToEndGold: 0, endToEndFound: 0 },
     // The invariant that must never regress while recall improves.
     invalidAccepted: 0,
     // Claims that validated but used the v1 shape. A v2 run producing these is
@@ -208,8 +211,25 @@ function score(records) {
     m.legacyShapedClaims += r.predictedClaims.filter((c) => c.v2Shape === false).length;
     if (!Array.isArray(r.goldClaims)) continue;
 
+    m.labelledTurns += 1;
+
+    // Composite success is measured over EVERY composite case. An abstained
+    // composite is a failure end-to-end, and excluding it lets the denominator
+    // move from run to run — which it did: 9, 5, 7, 7.
+    if (r.scenarioFamily === "composite") m.composite.turns += 1;
+
+    // End-to-end counts an abstention as a miss. Conditional recall excludes
+    // it. Reporting only the second would let a system improve its headline by
+    // abstaining more often.
     if (r.extractionStatus === "abstained") {
       m.labelledAbstained += 1;
+      for (const g of r.goldClaims) {
+        if (g.material === false) continue;
+        const t = g.claimType;
+        m.perType[t] ??= { gold: 0, found: 0, endToEndGold: 0, endToEndFound: 0 };
+        m.perType[t].endToEndGold += 1;
+        if (r.scenarioFamily === "bare-answer") m.bareAnswer.endToEndGold += 1;
+      }
       continue;
     }
 
@@ -224,7 +244,6 @@ function score(records) {
     }
 
     if (r.scenarioFamily === "composite") {
-      m.composite.turns += 1;
       // Decomposed means: at least as many claims as gold premises, and no
       // single claim bundling two independent sources.
       const bundled = r.predictedClaims.some(
@@ -241,12 +260,20 @@ function score(records) {
         continue;
       }
       const t = g.claimType;
-      m.perType[t] ??= { gold: 0, found: 0 };
+      m.perType[t] ??= { gold: 0, found: 0, endToEndGold: 0, endToEndFound: 0 };
       m.perType[t].gold += 1;
-      if (found) m.perType[t].found += 1;
+      m.perType[t].endToEndGold += 1;
+      if (found) {
+        m.perType[t].found += 1;
+        m.perType[t].endToEndFound += 1;
+      }
       if (r.scenarioFamily === "bare-answer") {
         m.bareAnswer.gold += 1;
-        if (found) m.bareAnswer.found += 1;
+        m.bareAnswer.endToEndGold += 1;
+        if (found) {
+          m.bareAnswer.found += 1;
+          m.bareAnswer.endToEndFound += 1;
+        }
       }
     }
   }
@@ -272,23 +299,31 @@ function report(m) {
 
   if (m.labelled) {
     lines.push("");
-    lines.push("recall by claim type (material gold, extraction succeeded):");
+    lines.push(`coverage: ${m.labelled}/${m.labelledTurns} turns produced an extraction  ` +
+      `${pct(m.labelled, m.labelledTurns)}`);
+    lines.push("");
+    lines.push("recall by claim type   end-to-end (abstention = miss) | conditional (accepted only):");
     for (const [t, s] of Object.entries(m.perType).sort()) {
-      lines.push(`  ${t.padEnd(26)} ${s.found}/${s.gold}  ${pct(s.found, s.gold)}`);
+      lines.push(
+        `  ${t.padEnd(26)} ${String(`${s.endToEndFound}/${s.endToEndGold}`).padEnd(8)} ` +
+          `${pct(s.endToEndFound, s.endToEndGold).padStart(6)}   |   ` +
+          `${String(`${s.found}/${s.gold}`).padEnd(8)} ${pct(s.found, s.gold)}`,
+      );
     }
     lines.push("");
     // Raw counts, deliberately. A rate over this many turns would be a
     // number with no confidence interval worth quoting.
     if (m.composite.turns) {
       lines.push(
-        `atomic decomposition on composite turns: ` +
+        `composite decomposition (all cases, abstention = failure): ` +
           `${m.composite.decomposed}/${m.composite.turns}  ${pct(m.composite.decomposed, m.composite.turns)}`,
       );
     }
-    if (m.bareAnswer.gold) {
+    if (m.bareAnswer.endToEndGold) {
       lines.push(
-        `bare-answer claim recall: ` +
-          `${m.bareAnswer.found}/${m.bareAnswer.gold}  ${pct(m.bareAnswer.found, m.bareAnswer.gold)}`,
+        `bare-answer recall: end-to-end ${m.bareAnswer.endToEndFound}/${m.bareAnswer.endToEndGold} ` +
+          `${pct(m.bareAnswer.endToEndFound, m.bareAnswer.endToEndGold)}  |  conditional ` +
+          `${m.bareAnswer.found}/${m.bareAnswer.gold} ${pct(m.bareAnswer.found, m.bareAnswer.gold)}`,
       );
     }
     if (m.immaterialGold) {
@@ -362,6 +397,7 @@ async function main() {
       { llm },
     );
     records.push({
+      runId: args.runId ?? null,
       turnId: row.turnId,
       groupId: row.groupId,
       split: row.split,
@@ -374,6 +410,8 @@ async function main() {
       extractionStatus: extraction.status,
       abstentionReason: extraction.reason ?? null,
       provenance: extraction.provenance ?? null,
+      latencyMs: extraction.provenance?.latencyMs ?? null,
+      usage: extraction.provenance?.usage ?? null,
       predictedClaims: extraction.claims ?? [],
       // Present and empty on a labelled zero-claim turn; null when unlabelled,
       // so a turn with no predictions still has a row to label.

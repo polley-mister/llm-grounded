@@ -73,7 +73,8 @@
     "build:types": "tsc -p tsconfig.json",
     "check:types": "tsc -p tsconfig.json --outDir /tmp/llm-grounded-types-check && diff -r types /tmp/llm-grounded-types-check",
     "prepublishOnly": "npm run build:types && npm test",
-    "claims:extract": "node scripts/claims-extract.mjs"
+    "claims:extract": "node scripts/claims-extract.mjs",
+    "claims:stability": "node scripts/claims-stability.mjs"
   },
   "types": "./types/index.d.ts",
   "devDependencies": {
