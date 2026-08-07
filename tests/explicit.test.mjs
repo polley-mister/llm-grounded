@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { AGENT } from "./_vocabulary.mjs";
-import { hardTrigger } from "../src/explicit.js";
+import { advisoryText, bindsCurrentInformation, hardTrigger } from "../src/explicit.js";
 
 test("an ordinary factual question compels nothing", () => {
   // The whole point of the split. This resembles a web question and is not one.
@@ -75,6 +75,74 @@ test("a correction binds the fact-commit path and compels no retrieval", () => {
   // The operator is the authoritative source for their own world, so their
   // assertion is the evidence. Nothing is looked up to believe it.
   assert.equal(got.requiredTool, null);
+});
+
+test("REGRESSION: a current-information question compels the web tier", () => {
+  // The live turn this tier was added for. classify.js already returned
+  // current-information; only advice came of it, so the agent invented a
+  // forecast for a location it does not know.
+  const got = hardTrigger(`How's the weather looking like for you, ${AGENT}?`);
+  assert.equal(got.kind, "web");
+  assert.equal(got.reason, "current-information-topic");
+
+  for (const s of [
+    "what's the weather in Portland?",
+    "what is the stock price of AAPL",
+    "who won the game last night?",
+    "any news on the outage?",
+    "what's the release date for that",
+  ]) {
+    assert.equal(hardTrigger(s).kind, "web", s);
+  }
+});
+
+test("the topic tier does not fire on the agent's own state", () => {
+  // CURRENT_INFO in classify.js matches "today" and "latest" so it can advise.
+  // Binding on those would compel a search for things already in context.
+  for (const s of [
+    "what did you change today?",
+    "what's your latest config?",
+    "how did the deploy go",
+    "what model are you running?",
+  ]) {
+    assert.equal(hardTrigger(s).kind, null, s);
+  }
+});
+
+test("the topic tier does not fire on invention or on a statement", () => {
+  for (const s of [
+    "write me a poem about the weather",
+    "summarise the news article I pasted",
+    "hypothetically, what if the price of copper doubled?",
+    "the weather was miserable last week",
+  ]) {
+    assert.equal(hardTrigger(s).kind, null, s);
+  }
+});
+
+test("an explicit instruction outranks the topic tier", () => {
+  // Both mention a bound topic. The tier the operator named must win, or the
+  // trigger silently redirects them to a different store.
+  assert.equal(hardTrigger("check your vault for the forecast").reason, "explicit-memory-request");
+  assert.equal(hardTrigger("search the web for the weather").reason, "explicit-web-request");
+});
+
+test("bindsCurrentInformation needs topic, question shape and factual intent", () => {
+  assert.equal(bindsCurrentInformation("what's the weather?"), true);
+  assert.equal(bindsCurrentInformation("the weather is fine"), false);
+  assert.equal(bindsCurrentInformation("write a haiku about the weather"), false);
+  assert.equal(bindsCurrentInformation("what's for dinner?"), false);
+  for (const v of ["", "   ", null, undefined]) {
+    assert.equal(bindsCurrentInformation(v), false);
+  }
+});
+
+test("the web advisory does not offer answering from memory", () => {
+  // The old wording ended "use web search if you need it", which the agent read
+  // as permission to decide it did not need it.
+  const advice = advisoryText("web");
+  assert.match(advice, /do not answer from memory/i);
+  assert.doesNotMatch(advice, /if you need it/i);
 });
 
 test("empty and non-string input resolve rather than throw", () => {

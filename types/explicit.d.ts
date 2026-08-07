@@ -50,12 +50,21 @@ export function hardTrigger(message: string, context?: {
     prevAssistant?: string;
 }): HardTrigger;
 /**
+ * True when a turn asks, as a question, for a fact that only retrieval can
+ * supply. Exported so the boundary is testable directly rather than only
+ * through the trigger it feeds.
+ *
+ * @param {string} text vocative-stripped user text
+ * @returns {boolean}
+ */
+export function bindsCurrentInformation(text: string): boolean;
+/**
  * Non-binding hint derived from the legacy verdict.
  *
  * Offered to the model as information, never as an obligation. It cannot
  * compel a tool, reject a response, consume a revision, or fail closed.
  */
-export function advisoryText(legacyKind: any): "" | "This may depend on current external information. Use web search if you need it." | "This may depend on something the operator told you before. Check memory if you need it.";
+export function advisoryText(legacyKind: any): string;
 /**
  * The result of a hard-trigger decision.
  *

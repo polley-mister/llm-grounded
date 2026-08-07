@@ -27,6 +27,61 @@ const EXPLICIT_WEB = [
   /\blook\s+it\s+up\b/i,
 ];
 
+/**
+ * Topics whose answer changes faster than any prompt file can hold, and which
+ * nothing already in context can answer.
+ *
+ * Deliberately far narrower than classify.js's CURRENT_INFO. That list exists
+ * to *advise* the web tier, so it can afford soft signals — "today",
+ * "recently", "latest" — that also appear in questions about the agent's own
+ * state. Binding on those would compel a search for "what did you change
+ * today?", which SOUL.md and the session already answer. Only topics with no
+ * in-context answer belong here.
+ *
+ * This is the one tier that fires on a topic rather than on an instruction the
+ * operator gave outright, and it is here rather than in classify.js so the
+ * demote-only invariant still holds where it is declared: classify.js gained
+ * no power, this file took on one more narrow, enumerated case.
+ *
+ * Evidence for adding it: a live turn asked "How's the weather looking like
+ * for you, TARS?". classify.js correctly returned current-information, but
+ * that tier only ever produced advice, so the turn resolved advisory/pass and
+ * the agent invented a forecast — cold, dry, visibility acceptable — for a
+ * location it does not know.
+ */
+const BINDING_CURRENT_TOPICS = [
+  /\b(?:weather|forecast|temperature|wind\s*chill|humidity)\b/i,
+  /\b(?:stock|share)\s+price\b|\bmarket\s+cap\b|\bexchange\s+rate\b|\bprice\s+of\b/i,
+  /\bhow\s+much\s+(?:does|do|is|are)\b[^?]{0,40}\bcost\b/i,
+  /\b(?:final\s+score|score\s+of|standings|who\s+won)\b/i,
+  /\b(?:news|headlines?)\b/i,
+  /\b(?:release\s+date|changelog)\b/i,
+];
+
+/**
+ * Frames that ask for invention or transformation rather than fact.
+ *
+ * A poem about the weather needs no forecast. Without this guard the topic
+ * tier would compel retrieval for work the agent can complete alone, which is
+ * the exact failure the 61%-compelled baseline above records.
+ */
+const NON_FACTUAL_FRAMES = [
+  /\b(?:write|compose|draft|invent|make\s+up|come\s+up\s+with|imagine|pretend|role-?play)\b/i,
+  /\b(?:translate|rewrite|reword|rephrase|paraphrase|summari[sz]e)\b/i,
+  /\b(?:hypothetically|suppose|what\s+if)\b/i,
+];
+
+/**
+ * Interrogative shape. The topic tier binds only on an actual question, so a
+ * remark that mentions a topic ("the weather was miserable last week") states
+ * the operator's own world rather than asking the agent to assert anything.
+ */
+const QUESTION_SHAPE = [
+  /\?\s*$/,
+  /^\s*(?:what|what'?s|how|how'?s|when|where|which|who|whose|is|are|was|were|do|does|did|can|could|will|would|has|have|any)\b/i,
+  /\b(?:tell\s+me|do\s+you\s+know)\b/i,
+];
+
 /** "Check your memory", "what did I previously tell you", "search the vault". */
 const EXPLICIT_MEMORY = [
   /\b(?:check|search|look\s+in|consult)\b[^.?!]{0,24}\b(?:your\s+)?(?:memory|memories|vault|notes|wiki)\b/i,
@@ -168,7 +223,31 @@ export function hardTrigger(message, context = {}) {
   if (isCompleteArithmetic(text)) return { kind: "arithmetic", reason: "complete-expression" };
   if (matchesAny(EXPLICIT_WEB, text)) return { kind: "web", reason: "explicit-web-request" };
   if (matchesAny(EXPLICIT_MEMORY, text)) return { kind: "memory", reason: "explicit-memory-request" };
+
+  // Last, so that an instruction the operator gave outright keeps its own
+  // reason. "Check your vault for the forecast" is an explicit memory request
+  // that happens to mention a bound topic, and routing it to the web would
+  // override the tier they named.
+  if (bindsCurrentInformation(text)) {
+    return { kind: "web", reason: "current-information-topic" };
+  }
   return { kind: null, reason: "" };
+}
+
+/**
+ * True when a turn asks, as a question, for a fact that only retrieval can
+ * supply. Exported so the boundary is testable directly rather than only
+ * through the trigger it feeds.
+ *
+ * @param {string} text vocative-stripped user text
+ * @returns {boolean}
+ */
+export function bindsCurrentInformation(text) {
+  const s = String(text ?? "").trim();
+  if (!s) return false;
+  if (!matchesAny(BINDING_CURRENT_TOPICS, s)) return false;
+  if (matchesAny(NON_FACTUAL_FRAMES, s)) return false;
+  return matchesAny(QUESTION_SHAPE, s);
 }
 
 /**
@@ -179,7 +258,15 @@ export function hardTrigger(message, context = {}) {
  */
 export function advisoryText(legacyKind) {
   if (legacyKind === "web") {
-    return "This may depend on current external information. Use web search if you need it.";
+    // "Use web search if you need it" left the agent to judge its own need, and
+    // it judged wrong: the weather turn took the escape hatch and invented an
+    // answer. This still advises rather than binds — the topic tier above is
+    // what compels — but it names the only two acceptable outcomes instead of
+    // offering answering-from-memory as a third.
+    return (
+      "This depends on current external information that is not in your context. " +
+      "Search the web before answering, or say you do not have it. Do not answer from memory."
+    );
   }
   if (legacyKind === "memory") {
     return "This may depend on something the operator told you before. Check memory if you need it.";

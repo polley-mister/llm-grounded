@@ -3,6 +3,54 @@
 This project follows [Semantic Versioning](https://semver.org/). While the
 major version is `0`, the public API may change in a minor release.
 
+## 0.3.5
+
+A tier that only ever advised is now allowed to bind, for six topics.
+
+An operator asked "How's the weather looking like for you, TARS?". The
+classifier was right about it — `current-information`, the web tier — and it
+made no difference, because that verdict had never been able to compel
+anything. The turn resolved advisory/pass and the agent answered from nowhere:
+cold, dry, visibility acceptable, for a location it does not know and cannot
+look up. The advisory it was given ended "use web search if you need it", and
+it decided it did not need it.
+
+The demote-only invariant is intact. `classify.js` gained no power; the split
+it protects is still real. What changed is that `explicit.js`, which already
+owns every binding decision, took on one more enumerated case — and that case
+is a topic rather than an instruction the operator gave outright, which is new.
+
+By the rule in `docs/RELEASING.md` that is a capability change and belongs at a
+minor bump. It ships as a patch at the owner's direction. Recorded here rather
+than quietly, because the next person reading this line to find where the
+binding tier changed will not think to look at a patch release.
+
+### Added
+
+- `bindsCurrentInformation`, and a `current-information-topic` hard trigger
+  that binds the web tier. It fires only when all three hold: a match against
+  six topics with no in-context answer (weather, price, score, news, release
+  date, changelog), no invention or transformation frame, and an interrogative
+  shape. Deliberately far narrower than `classify.js`'s `CURRENT_INFO`, which
+  carries soft signals — "today", "latest" — that also appear in questions
+  about the agent's own state; binding those would compel a search for "what
+  did you change today?", which the injected prompt files already answer.
+- The trigger is checked last, so an instruction the operator gave outright
+  keeps its own reason and its own tier. "Check your vault for the forecast"
+  is still `explicit-memory-request`.
+
+### Changed
+
+- The web advisory no longer offers answering from memory as a third outcome.
+  "Use web search if you need it" left the agent to judge its own need; it now
+  names search or disclosure and rules out memory.
+
+### Note
+
+Weather questions will now fail closed rather than resolve. The agent has no
+location and the vault holds none, so the compelled search retrieves nothing
+usable. That is the correct outcome and it is not the same as answering.
+
 ## 0.3.4
 
 Repair. The 0.3.2 deployment gate rejected its own first deployment.
